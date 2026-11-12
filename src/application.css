@@ -1,0 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+@import url("./styles/font-faces.css");
+@import url("./styles/design-tokens.css");
+@import url("./styles/global-ui.css");
+@import url("./styles/project-dashboard.css");
+@import url("./styles/editor-workspace.css");
+@import url("./styles/document-preview.css");
+@import url("./styles/app-layout.css");
+@import url("./styles/ui-overrides.css");

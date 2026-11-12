@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<svg width="2402" height="1720.8" version="1.1" viewBox="94.24 446.22 2402 1720.8" xmlns="http://www.w3.org/2000/svg">
+ <title>Symmetrically rounded logo</title>
+ <g transform="matrix(2.7056 0 0 2.7056 72.678 451.66)">
+  <path id="a" d="m373.16 3.92a13 13 0 0 1 10.903-5.92h122.68a13 13 0 0 1 11.066 6.179l375.98 610a13 13 0 0 1-11.067 19.821h-225.26a13 13 0 0 1-11.219-6.431l-252.45-431.15a13 13 0 0 0-22.203-0.383l-65.756 103.91a13 13 0 0 1-10.986 6.048h-93.9a13 13 0 0 1-10.903-20.08z" fill="#777"/>
+  <path id="b" d="m20.978 634a13 13 0 0 1-10.894-20.094l151.07-232a13 13 0 0 1 10.894-5.906h197.97a13 13 0 0 1 10.894 20.094l-151.07 232a13 13 0 0 1-10.894 5.906z" fill="#43845d"/>
+ </g>
+</svg>

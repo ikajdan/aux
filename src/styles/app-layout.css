@@ -1,0 +1,168 @@
+/*
+ * SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-6) var(--space-6);
+    font-size: var(--text-xs);
+}
+body:not(.editor-view) {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+body:not(.editor-view) > main {
+    flex: 1;
+}
+/* Only the workspace owns the viewport; the dashboard keeps document scrolling. */
+body.editor-view {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+body.editor-view > .app-header {
+    flex: none;
+}
+body.editor-view > main,
+body.editor-view #workspace {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+body.editor-view > main {
+    padding: 0;
+}
+body.editor-view .workspace-grid {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: auto;
+}
+body.editor-view .pane {
+    min-height: 0;
+    overflow: auto;
+}
+body.editor-view .pane > *,
+body.editor-view .sidebar-panel > * {
+    flex-shrink: 0;
+}
+body.editor-view .sidebar-panel {
+    min-height: 0;
+    overflow: auto;
+    flex: 1 0 0;
+}
+body.editor-view #workspace-search-results {
+    flex: 1 1 0;
+}
+body.editor-view #files-panel,
+body.editor-view #project-search-panel {
+    overflow: hidden;
+    flex: 1 1 0;
+}
+body.editor-view #file-tree {
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 0;
+}
+body.editor-view #editor,
+body.editor-view #pdf,
+body.editor-view .empty-state {
+    height: 0;
+    min-height: 3rem;
+    flex: 1 0 3rem;
+    overflow: auto;
+}
+body.editor-view #editor {
+    min-height: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+}
+body.editor-view .preview-pane {
+    overflow: hidden;
+}
+body.editor-view .preview-pane > .output-panel {
+    flex: 1 1 0;
+}
+body.editor-view .output-panel > #pdf,
+body.editor-view .output-panel > .empty-state {
+    min-height: 0;
+    flex: 1 1 0;
+}
+@media (max-width: 1100px) {
+    #pane-divider {
+        display: none;
+    }
+
+    .workspace-grid {
+        gap: var(--pane-gap);
+        grid-template-columns: max(220px, var(--sidebar-min-width, 220px)) minmax(0, 1fr);
+    }
+    .preview-pane {
+        grid-column: 1 / -1;
+    }
+    /* Keep usable pane widths: narrow screens scroll sideways, not down the page. */
+    body.editor-view .workspace-grid {
+        grid-template-columns: max(220px, var(--sidebar-min-width, 220px)) repeat(2, minmax(300px, 1fr));
+        scroll-snap-type: x proximity;
+    }
+    body.editor-view .pane {
+        grid-column: auto;
+        scroll-snap-align: start;
+    }
+    body.editor-view .editor-pane {
+        border-right: 1px solid var(--border);
+    }
+    #pdf {
+        height: 650px;
+        flex: auto;
+    }
+}
+@media (max-width: 650px) {
+    #status-toast {
+        right: auto;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 2rem);
+    }
+    main {
+        padding: var(--space-3);
+    }
+    .app-header {
+        padding: var(--space-3) var(--space-3);
+        align-items: center;
+    }
+    .theme-control {
+        flex-direction: column;
+        align-items: start;
+    }
+    .workspace-grid {
+        grid-template-columns: minmax(var(--sidebar-min-width, 220px), 1fr);
+    }
+    body.editor-view .workspace-grid {
+        grid-template-columns: minmax(max(300px, var(--sidebar-min-width, 220px)), 100%) repeat(2, minmax(300px, 100%));
+    }
+    .preview-pane {
+        grid-column: auto;
+    }
+    #file-tree {
+        max-height: 260px;
+    }
+    #editor {
+        min-height: 400px;
+    }
+    .toolbar {
+        align-items: stretch;
+    }
+    .toolbar button {
+        flex: 1 1 auto;
+    }
+}

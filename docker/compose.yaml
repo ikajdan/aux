@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+services:
+  aux:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: aux-latex:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ../server/config.json:/app/server/config.json:ro
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    pids_limit: 256
+    mem_limit: 8g
+    cpus: 8

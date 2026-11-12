@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+/.git/
+/.github/
+/.npm-cache/
+/.ruff_cache/
+/.venv/
+/dist/
+/node_modules/
+/tests/
+**/__pycache__/

@@ -1,0 +1,13 @@
+{
+  "gitlabUrl": "https://gitlab.com",
+  "repositoryGroups": [{ "name": "Documents", "path": "example/documents" }],
+  "maxConcurrentBuilds": 6,
+  "mainDocument": "main.tex",
+  "limits": {
+    "requestBytes": 41943040,
+    "snapshotBytes": 31457280,
+    "snapshotFiles": 5000,
+    "snapshotEntries": 10000,
+    "submoduleDepth": 8
+  }
+}

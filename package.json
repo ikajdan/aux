@@ -1,0 +1,44 @@
+{
+  "name": "aux-latex",
+  "version": "1.0.0",
+  "description": "Browser-based LaTeX editor for GitLab repositories",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ikajdan/aux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ikajdan/aux/issues"
+  },
+  "homepage": "https://github.com/ikajdan/aux",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "node --test tests/frontend/*.mjs",
+    "test:backend": "python3 -m unittest discover -s tests/backend -p 'test_*.py'",
+    "check": "npm run build && npm test",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "start": "python3 server/server.py"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/legacy-modes": "6.5.5",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
+    "@isomorphic-git/lightning-fs": "4.10.3",
+    "@lezer/highlight": "1.2.5",
+    "buffer": "6.0.3",
+    "fflate": "0.8.3",
+    "isomorphic-git": "1.44.3",
+    "lucide": "1.59.0",
+    "pdfjs-dist": "5.4.624"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

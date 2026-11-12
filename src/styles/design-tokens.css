@@ -1,0 +1,127 @@
+/*
+ * SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+:root {
+    --tree-modified-color: light-dark(#8a682b, #bca16b);
+    /* Typography, spacing and component geometry shared across the UI. */
+    --text-2xs: 0.625rem;
+    --text-xs: 0.75rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.875rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.5rem;
+    --leading-normal: 1.5;
+    --weight-medium: 550;
+    --weight-bold: 700;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --radius: 0.3125rem;
+    --radius-sm: var(--radius);
+    --radius-md: var(--radius);
+    --radius-lg: var(--radius);
+    --control-height: 2.25rem;
+    --control-height-sm: 2rem;
+    --floating-bottom-offset: max(var(--space-2), env(safe-area-inset-bottom));
+    --brand-logo-height: 34px;
+    --brand-copy-height: 36px;
+    --pane-header-height: 4.25rem;
+    --app-header-height: 3.5rem;
+    --dialog-width: 40rem;
+    --dialog-width-compact: 28.75rem;
+    --motion-fast: 140ms;
+    --motion-normal: 220ms;
+    --motion-spinner: 1.2s;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --shadow-control: 0 1px 3px #0000001a;
+    --shadow-inset: inset 0 1px 2px #0000000d;
+    --shadow-floating: 0 4px 20px #0002;
+    --shadow-dialog: 0 20px 64px #0003;
+    --backdrop: #0008;
+    --focus-outline: 2px solid var(--accent);
+    --focus-offset-tight: 2px;
+    --focus-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+    --accent-surface-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    --accent-surface-selected: color-mix(in srgb, var(--accent) 12%, var(--surface));
+
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-code: "Fira Code", ui-monospace, SFMono-Regular, Consolas, monospace;
+    --font-brand: "Sora", var(--font-ui);
+    color-scheme: light;
+    --bg: #f5f5f5;
+    --surface: #fff;
+    --subtle: #ededed;
+    --text: #262626;
+    --muted: #626262;
+    --border: #d0d0d0;
+    --switch-track: color-mix(in srgb, var(--bg) 58%, #fff);
+    --switch-selected: var(--surface);
+    --switch-border: var(--border);
+    --switch-frame-border: color-mix(in srgb, var(--accent) 36%, transparent);
+    --switch-hover: color-mix(in srgb, var(--accent) 8%, transparent);
+    --switch-text: color-mix(in srgb, var(--text) 72%, var(--muted));
+    --accent: #326447;
+    --primary: #397650;
+    --primary-hover: #2f6343;
+    --on-primary: #fff;
+
+    --success: #28633e;
+    --busy: #805b18;
+    --selected: #e4e4e4;
+    --error: #ad2636;
+}
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #141414;
+    --surface: #1e1e1e;
+    --subtle: #292929;
+    --text: #e8e8e8;
+    --muted: #aeaeae;
+    --border: #414141;
+    --switch-track: rgb(254 254 254 / 4%);
+    --switch-selected: color-mix(in srgb, var(--accent) 8%, transparent);
+    --switch-border: rgb(254 254 254 / 11%);
+    --switch-frame-border: color-mix(in srgb, var(--accent) 28%, transparent);
+    --switch-hover: rgb(254 254 254 / 6%);
+    --accent: #b5d9be;
+    --primary: #b5d9be;
+    --primary-hover: #c8e5cf;
+    --on-primary: #203b29;
+
+    --success: #a3d4b0;
+    --busy: #e0bd79;
+    --selected: #363636;
+    --error: #ff9da8;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        color-scheme: dark;
+        --bg: #141414;
+        --surface: #1e1e1e;
+        --subtle: #292929;
+        --text: #e8e8e8;
+        --muted: #aeaeae;
+        --border: #414141;
+        --switch-track: rgb(254 254 254 / 4%);
+        --switch-selected: color-mix(in srgb, var(--accent) 8%, transparent);
+        --switch-border: rgb(254 254 254 / 11%);
+        --switch-frame-border: color-mix(in srgb, var(--accent) 28%, transparent);
+        --switch-hover: rgb(254 254 254 / 6%);
+        --accent: #b5d9be;
+        --primary: #b5d9be;
+        --primary-hover: #c8e5cf;
+        --on-primary: #203b29;
+
+        --success: #a3d4b0;
+        --busy: #e0bd79;
+        --selected: #363636;
+        --error: #ff9da8;
+    }
+}

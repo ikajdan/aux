@@ -1,0 +1,685 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="csp-style-nonce" content="__STYLE_NONCE__" />
+        <title>Documents · Aux</title>
+        <link rel="icon" href="/assets/favicon.ico" sizes="16x16 32x32 48x48" type="image/x-icon" />
+        <link rel="stylesheet" href="/assets/pdfjs/text-layer.css" />
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body class="setup-pending">
+        <dialog
+            id="setup-dialog"
+            class="app-dialog"
+            aria-labelledby="setup-title"
+            data-step="0"
+            data-dialog-title="Welcome to Aux"
+            data-dialog-icon="editor"
+            data-dialog-close="setup-close"
+        >
+            <div class="dialog-body">
+                <ol class="setup-progress" aria-label="Setup progress">
+                    <li aria-current="step" data-state="current"><span class="setup-step-marker" aria-hidden="true">1</span><span>Token</span></li>
+                    <li data-state="upcoming"><span class="setup-step-marker" aria-hidden="true">2</span><span>Identity</span></li>
+                    <li data-state="upcoming"><span class="setup-step-marker" aria-hidden="true">3</span><span>Appearance</span></li>
+                </ol>
+                <form id="setup-form" novalidate>
+                    <div class="setup-viewport">
+                        <div class="setup-track">
+                            <section class="setup-card" aria-labelledby="setup-token-heading">
+                                <h3 id="setup-token-heading" tabindex="-1">Connect to GitLab</h3>
+                                <p class="hint" id="setup-token-hint">
+                                    Create a personal access token to access your GitLab documents. It is saved in this browser.
+                                </p>
+                                <div class="token-guide">
+                                    <ol class="hint">
+                                        <li>
+                                            Open
+                                            <a data-gitlab-token-link href="#" target="_blank" rel="noopener noreferrer">Personal access tokens</a>, then choose
+                                            <strong>Generate token → Legacy token</strong>.
+                                        </li>
+                                        <li>Enter a <strong>Token name</strong> and set an <strong>Expiration date</strong>.</li>
+                                        <li>Select <code>read_repository</code>, <code>read_api</code>, <code>write_repository</code> and <code>api</code>.</li>
+                                        <li>Click <strong>Generate token</strong>, then copy the token and paste it below.</li>
+                                    </ol>
+                                </div>
+                                <div class="settings-fields settings-token">
+                                    <label for="setup-token"
+                                        >Personal access token<input
+                                            id="setup-token"
+                                            type="password"
+                                            autocomplete="off"
+                                            required
+                                            aria-describedby="setup-token-hint setup-token-error"
+                                            autofocus /><span id="setup-token-error" class="settings-error" hidden></span
+                                    ></label>
+                                </div>
+                            </section>
+                            <section class="setup-card" aria-labelledby="setup-identity-heading" hidden inert aria-hidden="true">
+                                <h3 id="setup-identity-heading" tabindex="-1">Commit Identity</h3>
+                                <p class="hint" id="setup-identity-hint">Used as the author name and email for your Git commits.</p>
+                                <div class="settings-fields">
+                                    <label for="setup-author"
+                                        >Author<input
+                                            id="setup-author"
+                                            spellcheck="false"
+                                            autocomplete="name"
+                                            required
+                                            aria-describedby="setup-identity-hint setup-author-error" /><span
+                                            id="setup-author-error"
+                                            class="settings-error"
+                                            hidden
+                                        ></span
+                                    ></label>
+                                    <label for="setup-email"
+                                        >Email<input
+                                            id="setup-email"
+                                            spellcheck="false"
+                                            type="email"
+                                            autocomplete="email"
+                                            required
+                                            aria-describedby="setup-identity-hint setup-email-error" /><span
+                                            id="setup-email-error"
+                                            class="settings-error"
+                                            hidden
+                                        ></span
+                                    ></label>
+                                </div>
+                            </section>
+                            <section class="setup-card" aria-labelledby="setup-appearance-heading" hidden inert aria-hidden="true">
+                                <h3 id="setup-appearance-heading" tabindex="-1">Appearance</h3>
+                                <p class="hint">Choose a light or dark theme, or follow your system settings.</p>
+                                <div
+                                    class="sidebar-tabs theme-options setup-theme-options"
+                                    data-active-index="0"
+                                    role="radiogroup"
+                                    aria-label="Setup app theme"
+                                >
+                                    <button
+                                        class="setup-theme-choice"
+                                        data-theme-choice="system"
+                                        data-icon="system"
+                                        type="button"
+                                        role="radio"
+                                        aria-checked="true"
+                                    >
+                                        System
+                                    </button>
+                                    <button
+                                        class="setup-theme-choice"
+                                        data-theme-choice="light"
+                                        data-icon="light"
+                                        type="button"
+                                        role="radio"
+                                        aria-checked="false"
+                                        tabindex="-1"
+                                    >
+                                        Light
+                                    </button>
+                                    <button
+                                        class="setup-theme-choice"
+                                        data-theme-choice="dark"
+                                        data-icon="dark"
+                                        type="button"
+                                        role="radio"
+                                        aria-checked="false"
+                                        tabindex="-1"
+                                    >
+                                        Dark
+                                    </button>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                    <p id="setup-status" class="settings-error" role="status" aria-live="polite" tabindex="-1"></p>
+                    <div class="dialog-actions">
+                        <button id="setup-next" class="primary" type="submit" form="setup-form">
+                            <span id="setup-next-label">Next</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+        <header class="app-header">
+            <h1>
+                <a id="home" href="/" aria-label="Aux home"
+                    ><img src="/assets/logo.svg" height="46" alt="" /><span class="brand-copy"
+                        ><span class="brand-name">Aux</span><span class="brand-tagline">LaTeX editor</span></span
+                    ></a
+                >
+            </h1>
+            <h2 id="title" hidden>
+                <a id="project-link" target="_blank" rel="noopener noreferrer"></a>
+                <button id="project-branch" type="button" aria-controls="project-panel" aria-label="Open Sync tab"></button>
+            </h2>
+            <div class="header-actions">
+                <button
+                    id="shortcuts"
+                    data-icon="keyboard"
+                    type="button"
+                    aria-label="Keyboard shortcuts"
+                    title="Keyboard shortcuts"
+                    aria-haspopup="dialog"
+                    aria-controls="shortcuts-dialog"
+                    hidden
+                >
+                    Shortcuts
+                </button>
+                <button id="app-menu" data-icon="settings" type="button" aria-haspopup="dialog" aria-controls="connection-dialog" title="Settings">
+                    Settings
+                </button>
+                <button id="go-documents" data-icon="close" type="button" aria-label="Close document" title="Close document" hidden></button>
+            </div>
+        </header>
+        <main>
+            <dialog
+                id="shortcuts-dialog"
+                class="app-dialog"
+                aria-labelledby="shortcuts-title"
+                data-dialog-title="Keyboard Shortcuts"
+                data-dialog-icon="keyboard"
+                data-dialog-close="shortcuts-close"
+                data-dialog-close-autofocus
+            >
+                <div id="shortcut-groups" class="dialog-body"></div>
+            </dialog>
+            <dialog
+                id="connection-dialog"
+                aria-labelledby="connection-title"
+                data-dialog-title="Settings"
+                data-dialog-icon="settings"
+                data-dialog-close="connection-close"
+                data-dialog-title-text="settings-title-text"
+            >
+                <div class="dialog-body">
+                    <form id="connection-form" novalidate>
+                        <section class="settings-group" aria-labelledby="connection">
+                            <h3 id="connection">Connection</h3>
+                            <p id="connection-hint" class="hint">Connect with a GitLab personal access token with API scope.</p>
+                            <p class="hint">
+                                <a data-gitlab-token-link href="#" target="_blank" rel="noopener noreferrer">Manage GitLab personal access tokens</a>
+                            </p>
+                            <div class="settings-fields settings-token">
+                                <label for="token"
+                                    >Personal access token<input
+                                        id="token"
+                                        type="password"
+                                        autocomplete="off"
+                                        aria-describedby="connection-hint token-error"
+                                        required
+                                        autofocus /><span id="token-error" class="settings-error" aria-live="polite" hidden></span
+                                ></label>
+                            </div>
+
+                            <details class="token-guide">
+                                <summary data-icon="disclosure">How to generate a token</summary>
+                                <ol class="hint">
+                                    <li>
+                                        Open
+                                        <a data-gitlab-token-link href="#" target="_blank" rel="noopener noreferrer">Personal access tokens</a>, then choose
+                                        <strong>Generate token → Legacy token</strong>.
+                                    </li>
+                                    <li>Enter a <strong>Token name</strong> and set an <strong>Expiration date</strong>.</li>
+                                    <li>Select <code>read_repository</code>, <code>read_api</code>, <code>write_repository</code> and <code>api</code>.</li>
+                                    <li>Click <strong>Generate token</strong>, then copy the token and paste it above.</li>
+                                </ol>
+                            </details>
+                        </section>
+                        <section class="settings-group" aria-labelledby="identity-heading">
+                            <h3 id="identity-heading">Commit Identity</h3>
+                            <p id="identity-hint" class="hint">Used as the author name and email for your Git commits.</p>
+                            <div class="settings-fields">
+                                <label for="author"
+                                    >Author<input
+                                        id="author"
+                                        spellcheck="false"
+                                        autocomplete="name"
+                                        aria-describedby="identity-hint author-error"
+                                        required /><span id="author-error" class="settings-error" aria-live="polite" hidden></span
+                                ></label>
+                                <label for="email"
+                                    >Email<input
+                                        id="email"
+                                        spellcheck="false"
+                                        type="email"
+                                        autocomplete="email"
+                                        aria-describedby="identity-hint email-error"
+                                        required /><span id="email-error" class="settings-error" aria-live="polite" hidden></span
+                                ></label>
+                            </div>
+                        </section>
+
+                        <section class="settings-group" aria-labelledby="custom-repositories-heading">
+                            <h3 id="custom-repositories-heading">My repositories</h3>
+                            <p id="custom-repositories-hint" class="hint">Enter one project path, URL, or namespace per line.</p>
+                            <label for="custom-repositories">Repository paths or URLs</label>
+                            <textarea
+                                id="custom-repositories"
+                                rows="4"
+                                spellcheck="false"
+                                placeholder="Project paths, URLs, or namespaces"
+                                aria-describedby="custom-repositories-hint custom-repositories-status"
+                            ></textarea>
+                        </section>
+                    </form>
+
+                    <section class="settings-group" aria-labelledby="appearance-heading">
+                        <h3 id="appearance-heading">Appearance</h3>
+                        <p class="hint">Choose a light or dark theme, or follow your system settings.</p>
+                        <div class="theme-control">
+                            <span id="settings-theme-label">Theme</span>
+                            <div class="sidebar-tabs theme-options" data-active-index="0" role="radiogroup" aria-labelledby="settings-theme-label">
+                                <button
+                                    class="theme-choice"
+                                    data-theme-choice="system"
+                                    data-icon="system"
+                                    type="button"
+                                    role="radio"
+                                    aria-checked="true"
+                                    title="Use system theme"
+                                >
+                                    System
+                                </button>
+                                <button
+                                    class="theme-choice"
+                                    data-theme-choice="light"
+                                    data-icon="light"
+                                    type="button"
+                                    role="radio"
+                                    aria-checked="false"
+                                    tabindex="-1"
+                                    title="Use light theme"
+                                >
+                                    Light
+                                </button>
+                                <button
+                                    class="theme-choice"
+                                    data-theme-choice="dark"
+                                    data-icon="dark"
+                                    type="button"
+                                    role="radio"
+                                    aria-checked="false"
+                                    tabindex="-1"
+                                    title="Use dark theme"
+                                >
+                                    Dark
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <footer class="settings-footer">
+                    <div class="settings-feedback">
+                        <p class="settings-storage-hint hint">Settings are stored in this browser.</p>
+                        <p id="connection-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                        <p id="custom-repositories-status" class="hint" role="status" aria-live="polite" aria-atomic="true"></p>
+                    </div>
+                    <button id="restore-settings" type="button" title="Restore settings to how they were when this dialog opened">Restore changes</button>
+                    <button id="save-settings" class="primary" type="submit" form="connection-form">Save settings</button>
+                </footer>
+            </dialog>
+            <dialog
+                id="publishing-dialog"
+                aria-labelledby="publishing-title"
+                data-dialog-title="Publish Changes"
+                data-dialog-icon="branch"
+                data-dialog-close="publishing-close"
+                data-dialog-close-autofocus
+            >
+                <div class="dialog-body publishing-body">
+                    <section id="commit-options" class="publishing-step" aria-labelledby="commit-heading">
+                        <h3 id="commit-heading">Commit</h3>
+                        <p id="commit-description" class="hint">Record saved changes in this browser before publishing.</p>
+                        <div class="publishing-action-row">
+                            <label for="message">Commit message<input id="message" placeholder="Describe your changes" /></label>
+                            <button id="commit" data-icon="commit" class="primary" type="button">Create commit</button>
+                        </div>
+                    </section>
+                    <section id="push-options" class="publishing-step" aria-labelledby="push-heading">
+                        <h3 id="push-heading">Push Commits</h3>
+                        <p id="publish-description" class="hint">Push local commits to an existing or new branch.</p>
+                        <label for="target">Target branch</label>
+                        <div class="publishing-action-row publishing-push-row">
+                            <select id="target-remote-branches" aria-label="Choose an existing remote branch">
+                                <option value="" hidden disabled selected>Existing branch…</option>
+                            </select>
+                            <input id="target" placeholder="Or enter a new branch name" autocomplete="off" spellcheck="false" />
+                            <button id="push" data-icon="push" class="primary" type="button">Push commits</button>
+                        </div>
+                    </section>
+                    <section id="merge-request-options" class="publishing-step" aria-labelledby="mr-heading">
+                        <h3 id="mr-heading">Open a Merge Request</h3>
+                        <p id="mr-help" class="hint">The merge request will be based on the currently active branch.</p>
+                        <div class="publishing-action-row">
+                            <label for="mr-title">Merge request title<input id="mr-title" maxlength="255" placeholder="Defaults to commit title" /></label>
+                            <button id="create-mr" data-icon="branch" class="primary" type="button">Open merge request</button>
+                        </div>
+                        <p id="mr-result" role="status" aria-live="polite"></p>
+                    </section>
+                </div>
+            </dialog>
+            <div id="status-toast" popover="manual" hidden>
+                <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>
+                <button id="cancel-build" data-icon="close" type="button" aria-label="Cancel document build" title="Cancel document build" hidden></button>
+            </div>
+            <section id="dashboard" aria-labelledby="repositories-heading">
+                <div class="dashboard-heading">
+                    <div class="projects-heading-actions">
+                        <h2 id="repositories-heading" tabindex="-1">Documents</h2>
+                        <button
+                            id="repositories"
+                            data-icon="refresh"
+                            type="button"
+                            aria-label="Refresh documents"
+                            title="Refresh documents · Not refreshed yet"
+                        ></button>
+                    </div>
+                    <div class="project-filter">
+                        <label for="project-search">
+                            <span class="project-search-field" data-icon="search">
+                                <input
+                                    id="project-search"
+                                    type="search"
+                                    aria-label="Search documents"
+                                    placeholder="Search documents…"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    aria-controls="repos"
+                                />
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <p class="projects-description hint">Browse and edit documents by group, or open a group in GitLab.</p>
+
+                <div class="document-list-controls">
+                    <div class="project-sort-toolbar" role="group" aria-label="Sort documents">
+                        <button type="button" data-project-sort="name" aria-controls="repos" aria-pressed="false">Name</button>
+                        <button type="button" data-project-sort="updated" aria-controls="repos" aria-pressed="false">Updated</button>
+                    </div>
+                    <div class="project-filter-actions">
+                        <span class="hint">Tags:</span>
+                        <div
+                            id="project-topic-filters"
+                            class="project-topic-filters"
+                            role="group"
+                            aria-label="Filter documents matching all selected topics"
+                            title="Filter documents matching all selected topics"
+                        ></div>
+                    </div>
+                </div>
+
+                <div id="repos"></div>
+                <button
+                    id="project-clear-filters"
+                    type="button"
+                    aria-label="Clear search and topic filters"
+                    title="Clear search and topic filters"
+                    aria-controls="repos"
+                    hidden
+                >
+                    Clear filters
+                </button>
+            </section>
+            <section id="workspace" hidden aria-labelledby="title">
+                <div class="workspace-grid">
+                    <aside class="pane files-pane" aria-label="Files and sync">
+                        <div class="pane-heading">
+                            <div class="sidebar-tabs workspace-tabs" data-active-index="0" role="tablist" aria-label="Workspace sidebar">
+                                <button id="files-tab" data-icon="files" type="button" role="tab" aria-selected="true" aria-controls="files-panel">
+                                    Files
+                                </button>
+                                <button
+                                    id="search-tab"
+                                    data-icon="search"
+                                    type="button"
+                                    role="tab"
+                                    aria-selected="false"
+                                    aria-controls="project-search-panel"
+                                    aria-keyshortcuts="Control+Shift+f Meta+Shift+f"
+                                    tabindex="-1"
+                                >
+                                    Search
+                                </button>
+                                <button
+                                    id="project-tab"
+                                    data-icon="sync"
+                                    type="button"
+                                    role="tab"
+                                    aria-selected="false"
+                                    aria-controls="project-panel"
+                                    tabindex="-1"
+                                >
+                                    Sync
+                                </button>
+                            </div>
+                        </div>
+                        <div id="files-panel" class="sidebar-panel" role="tabpanel" aria-labelledby="files-tab" tabindex="0">
+                            <input id="uploads" type="file" multiple hidden />
+                            <input id="folder-uploads" type="file" webkitdirectory directory multiple hidden />
+                            <nav id="file-tree" aria-label="Document files"></nav>
+                            <div class="file-actions" role="toolbar" aria-label="File actions">
+                                <button id="new" data-icon="new" type="button" aria-label="New file" title="New file"></button>
+                                <button id="new-folder" data-icon="new-folder" type="button" aria-label="New folder" title="New folder"></button>
+                                <button id="upload" data-icon="upload" type="button" aria-label="Upload file" title="Upload file"></button>
+                                <button id="upload-folder" data-icon="upload-folder" type="button" aria-label="Upload folder" title="Upload folder"></button>
+                                <button
+                                    id="download-project"
+                                    data-icon="download-project"
+                                    type="button"
+                                    aria-label="Download project"
+                                    title="Download project ZIP"
+                                ></button>
+                            </div>
+                        </div>
+                        <div id="project-search-panel" class="sidebar-panel workspace-search" role="tabpanel" aria-labelledby="search-tab" hidden>
+                            <label for="workspace-search">Search workspace files</label>
+                            <input
+                                id="workspace-search"
+                                type="search"
+                                placeholder="Find text…"
+                                aria-describedby="workspace-search-status"
+                                aria-controls="workspace-search-results"
+                                autocomplete="off"
+                            />
+                            <p id="workspace-search-status" role="status"></p>
+                            <div id="workspace-search-results" role="region" aria-label="Workspace search results"></div>
+                        </div>
+                        <div id="project-panel" class="sidebar-panel project-controls" role="tabpanel" aria-labelledby="project-tab" tabindex="0" hidden>
+                            <div class="toolbar">
+                                <div class="branch-selector-heading">
+                                    <label for="branches" id="branchlabeltext">Remote branch</label>
+                                    <button
+                                        id="refresh-branches"
+                                        data-icon="refresh"
+                                        type="button"
+                                        aria-label="Refresh remote branches"
+                                        title="Refresh remote branches"
+                                    ></button>
+                                </div>
+                                <select id="branches" hidden></select>
+                                <div class="branch-pull-actions">
+                                    <button id="pull" data-icon="pull" type="button">Pull branch</button>
+                                    <button id="force-pull" data-icon="force-pull" class="destructive" type="button">Force pull</button>
+                                </div>
+                            </div>
+                            <section class="sync-publish-footer" aria-label="Local work">
+                                <span id="sync-status-label" class="sync-status-label">Status</span>
+
+                                <div id="history" tabindex="0" aria-label="Local changes and history"></div>
+                                <button id="publishing" data-icon="branch" type="button" aria-haspopup="dialog" aria-controls="publishing-dialog">
+                                    Publish changes
+                                </button>
+                            </section>
+                        </div>
+                    </aside>
+                    <section class="pane editor-pane" aria-label="File editor">
+                        <div class="pane-heading">
+                            <div class="editor-file-heading">
+                                <div class="editor-save-actions" role="group" aria-label="File changes" hidden>
+                                    <button
+                                        id="discard-file"
+                                        data-icon="restore"
+                                        type="button"
+                                        title="Restore saved version"
+                                        aria-label="Restore saved version"
+                                        disabled
+                                    ></button>
+                                </div>
+                                <div class="editor-file-title">
+                                    <span id="filename">No file open</span>
+                                    <span id="file-read-only" data-icon="lock" role="status" title="This file cannot be edited here." hidden>Read-only</span>
+                                </div>
+                            </div>
+                            <div id="latex-snippets" class="snippet-actions" role="group" aria-label="LaTeX formatting and snippets"></div>
+                            <button
+                                id="sync-source-pdf"
+                                data-icon="arrow-left-right"
+                                type="button"
+                                aria-label="Sync source and PDF location"
+                                title="Sync source and PDF location"
+                                aria-pressed="true"
+                                disabled
+                            ></button>
+                        </div>
+
+                        <div id="editor"></div>
+                        <div id="image-preview" aria-label="Image preview" tabindex="0" hidden></div>
+                    </section>
+                    <div
+                        id="pane-divider"
+                        role="separator"
+                        tabindex="0"
+                        aria-label="Resize editor and preview"
+                        aria-orientation="vertical"
+                        aria-controls="editor preview-panel"
+                        aria-valuemin="20"
+                        aria-valuemax="80"
+                        aria-valuenow="50"
+                    ></div>
+                    <section class="pane preview-pane" aria-label="Preview and build logs">
+                        <div class="pane-heading">
+                            <div class="sidebar-tabs preview-tabs" data-active-index="0" role="tablist" aria-label="Build output">
+                                <button id="preview-tab" data-icon="preview" type="button" role="tab" aria-selected="true" aria-controls="preview-panel">
+                                    Preview
+                                </button>
+                                <button id="logs-tab" data-icon="log" type="button" role="tab" aria-selected="false" aria-controls="compile-log" tabindex="-1">
+                                    Logs
+                                </button>
+                            </div>
+                            <div class="build-actions" role="group" aria-label="Build actions">
+                                <button id="download-pdf" data-icon="download" type="button" aria-label="Download PDF" title="Download PDF" disabled></button>
+                                <button id="compile" data-icon="compile" class="primary" type="button">Save and build</button>
+                            </div>
+                        </div>
+                        <div id="preview-panel" class="output-panel" role="tabpanel" aria-labelledby="preview-tab" tabindex="0">
+                            <div id="pdf-find" role="search" hidden>
+                                <div class="pdf-find-content">
+                                    <input
+                                        id="pdf-find-input"
+                                        type="search"
+                                        aria-label="Find in PDF"
+                                        placeholder="Search PDF…"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                    />
+                                    <span id="pdf-find-count" role="status" aria-live="polite" aria-atomic="true"></span>
+                                    <button
+                                        id="pdf-find-prev"
+                                        data-icon="arrow-up"
+                                        type="button"
+                                        aria-label="Previous match"
+                                        title="Previous match"
+                                        disabled
+                                    ></button>
+                                    <button
+                                        id="pdf-find-next"
+                                        data-icon="arrow-down"
+                                        type="button"
+                                        aria-label="Next match"
+                                        title="Next match"
+                                        disabled
+                                    ></button>
+                                    <button id="pdf-find-close" data-icon="close" type="button" aria-label="Close PDF search" title="Close"></button>
+                                </div>
+                            </div>
+                            <p id="preview-empty" class="empty-state">Your PDF preview will appear here.</p>
+                            <div id="pdf" role="region" aria-label="PDF pages" tabindex="0" hidden></div>
+                            <div id="pdf-controls" class="pdf-controls" role="group" aria-label="PDF page and zoom controls" hidden>
+                                <div class="pdf-controls-group" role="group" aria-label="Page navigation">
+                                    <button
+                                        id="pdf-page-prev"
+                                        data-icon="chevron-left"
+                                        type="button"
+                                        aria-label="Previous page"
+                                        title="Previous page"
+                                        disabled
+                                    ></button>
+                                    <input
+                                        id="pdf-page-number"
+                                        type="text"
+                                        inputmode="numeric"
+                                        pattern="[0-9]*"
+                                        aria-label="Page number"
+                                        title="Page number"
+                                        autocomplete="off"
+                                    />
+                                    <span id="pdf-page-count"></span>
+                                    <button
+                                        id="pdf-page-next"
+                                        data-icon="chevron-right"
+                                        type="button"
+                                        aria-label="Next page"
+                                        title="Next page"
+                                        disabled
+                                    ></button>
+                                </div>
+                                <div class="pdf-controls-group" role="group" aria-label="Zoom controls">
+                                    <span class="pdf-controls-separator" aria-hidden="true"></span>
+                                    <button id="pdf-zoom-out" data-icon="zoom-out" type="button" aria-label="Zoom out" title="Zoom out"></button>
+                                    <span id="pdf-zoom-value"></span>
+                                    <button id="pdf-zoom-in" data-icon="zoom-in" type="button" aria-label="Zoom in" title="Zoom in"></button>
+                                    <button
+                                        id="pdf-fit-width"
+                                        data-icon="fit-width"
+                                        type="button"
+                                        aria-label="Fit width"
+                                        title="Fit width"
+                                        aria-pressed="true"
+                                    ></button>
+                                </div>
+                                <div class="pdf-controls-group" role="group" aria-label="Preview appearance">
+                                    <span class="pdf-controls-separator" aria-hidden="true"></span>
+                                    <button
+                                        id="pdf-invert-colors"
+                                        data-icon="invert-colors"
+                                        type="button"
+                                        aria-label="Invert PDF preview colors"
+                                        title="Invert PDF preview colors"
+                                        aria-pressed="false"
+                                    ></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="compile-log" class="output-panel" role="tabpanel" aria-labelledby="logs-tab" tabindex="0" hidden>
+                            <div class="log-heading">
+                                <h3>Build Logs</h3>
+                                <button id="copy-logs" data-icon="copy" type="button" hidden>Copy All</button>
+                            </div>
+                            <pre id="log" tabindex="0" aria-label="Build Logs"></pre>
+                        </div>
+                    </section>
+                </div>
+            </section>
+        </main>
+        <script src="/app.js" defer></script>
+    </body>
+</html>

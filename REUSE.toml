@@ -1,0 +1,37 @@
+version = 1
+
+[[annotations]]
+path = [
+    "README.md",
+    "assets/favicon.ico",
+    "package-lock.json",
+    "package.json",
+    "server/config.json",
+    "tsconfig.json",
+]
+SPDX-FileCopyrightText = "Ignacy Kajdan <ignacy.kajdan@gmail.com>"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+[[annotations]]
+path = [
+    "assets/fonts/fira-code-latin-ext-wght-normal.woff2",
+    "assets/fonts/fira-code-latin-wght-normal.woff2",
+]
+SPDX-FileCopyrightText = "Copyright 2014-2020 The Fira Code Project Authors (https://github.com/tonsky/FiraCode)"
+SPDX-License-Identifier = "OFL-1.1"
+
+[[annotations]]
+path = [
+    "assets/fonts/inter-latin-ext-wght-normal.woff2",
+    "assets/fonts/inter-latin-wght-normal.woff2",
+]
+SPDX-FileCopyrightText = "Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)"
+SPDX-License-Identifier = "OFL-1.1"
+
+[[annotations]]
+path = [
+    "assets/fonts/sora-latin-ext-wght-normal.woff2",
+    "assets/fonts/sora-latin-wght-normal.woff2",
+]
+SPDX-FileCopyrightText = "2019 The Sora Project Authors (https://github.com/sora-xor/sora-font)"
+SPDX-License-Identifier = "OFL-1.1"
