@@ -47,7 +47,6 @@ import {
   alertDialog,
   saveChangesDialog,
   restoreFocus,
-  installBackdropCancellation,
   installInputConfirmation,
 } from "./modal-dialogs.js";
 import { createWorkspaceLayout, type PaneLayoutSettings } from "./workspace/pane-layout.js";
@@ -500,7 +499,6 @@ function openConnection() {
   }
   updatePageTitle();
 }
-for (const id of ["connection-dialog", "publishing-dialog", "shortcuts-dialog"]) installBackdropCancellation($(id));
 let shortcutsFocus: Element;
 function openShortcuts() {
   shortcutsFocus = document.activeElement;

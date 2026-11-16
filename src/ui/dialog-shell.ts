@@ -18,6 +18,7 @@ export function configureDialog(dialog: HTMLDialogElement, options: DialogShellO
   if (dialog.querySelector(":scope > .dialog-heading")) throw new Error("Dialog shell already configured");
   dialog.classList.add("dialog-shell");
   dialog.setAttribute("aria-labelledby", options.titleId);
+  dialog.setAttribute("closedby", "closerequest");
   const header = document.createElement("header");
   header.className = "dialog-heading";
   const title = document.createElement("h2");

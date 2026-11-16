@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { restoreFocus, installBackdropCancellation } from "../modal-dialogs.js";
+import { restoreFocus } from "../modal-dialogs.js";
 
 const settingsKeys = ["token", "author", "email"] as const;
 type SettingsKey = (typeof settingsKeys)[number];
@@ -123,11 +123,9 @@ export function createSetupDialog({ getSettings, validateToken, saveField, persi
     }
 
     return new Promise<void>((resolve) => {
-      const removeBackdropCancellation = installBackdropCancellation(dialog);
       dialog.addEventListener(
         "close",
         () => {
-          removeBackdropCancellation();
           for (const animation of stepAnimations) animation.cancel();
           dialog.oncancel = null;
           dialog.onkeydown = null;

@@ -39,41 +39,6 @@ let queue: Promise<unknown> = Promise.resolve();
 const pending = new Map<string, Promise<DialogResult>>();
 let sequence = 0;
 
-export function installBackdropCancellation(dialog: HTMLDialogElement) {
-  let pointerId: number | null = null;
-  const outside = (event: PointerEvent) => {
-    const rect = dialog.getBoundingClientRect();
-    return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
-  };
-  const reset = () => {
-    pointerId = null;
-  };
-  const down = (event: PointerEvent) => {
-    pointerId = dialog.open && event.target === dialog && event.isPrimary && event.button === 0 && outside(event) ? event.pointerId : null;
-  };
-  const up = (event: PointerEvent) => {
-    const dismiss = pointerId === event.pointerId && event.isPrimary && event.button === 0 && dialog.open && event.target === dialog && outside(event);
-    reset();
-    if (!dismiss) return;
-    if (typeof dialog.requestClose === "function") dialog.requestClose();
-    else if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) dialog.close();
-  };
-  // Native backdrop events target the modal itself, not an underlying dialog.
-  document.addEventListener("pointerdown", down, true);
-  document.addEventListener("pointerup", up, true);
-  document.addEventListener("pointercancel", reset, true);
-  window.addEventListener("blur", reset);
-  dialog.addEventListener("close", reset);
-  return () => {
-    document.removeEventListener("pointerdown", down, true);
-    document.removeEventListener("pointerup", up, true);
-    document.removeEventListener("pointercancel", reset, true);
-    window.removeEventListener("blur", reset);
-    dialog.removeEventListener("close", reset);
-    reset();
-  };
-}
-
 export function installInputConfirmation(input: HTMLInputElement, button: HTMLButtonElement) {
   input.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" || event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
@@ -247,7 +212,6 @@ function showDialog(kind: DialogKind, message: string, options: SaveChangesOptio
         form.append(actions);
         dialog.append(form);
         configureDialog(dialog, { title, titleId: `${id}-title`, icon: options.icon ?? defaultDialogIcons[kind] });
-        const removeBackdropCancellation = installBackdropCancellation(dialog);
         let result: DialogResult = kind === "prompt" || kind === "saveChanges" || kind === "uploadConflict" ? null : false;
         form.addEventListener("submit", (event) => {
           event.preventDefault();
@@ -264,7 +228,6 @@ function showDialog(kind: DialogKind, message: string, options: SaveChangesOptio
         dialog.addEventListener(
           "close",
           () => {
-            removeBackdropCancellation();
             dialog.remove();
             restoreFocus(previousFocus);
             resolve(kind === "alert" ? undefined : result);
@@ -280,7 +243,6 @@ function showDialog(kind: DialogKind, message: string, options: SaveChangesOptio
           initialFocus.focus();
           input?.select();
         } catch (error) {
-          removeBackdropCancellation();
           dialog.remove();
           restoreFocus(previousFocus);
           reject(error);
