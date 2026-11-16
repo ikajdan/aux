@@ -71,8 +71,8 @@ def load_config(path=None):
         if legacy:
             group = config.pop("repositoryGroup")
             groups = [{"name": group, "path": group}]
-        if not isinstance(groups, list) or not groups:
-            raise ValueError("repositoryGroups must be a nonempty array")
+        if not isinstance(groups, list):
+            raise ValueError("repositoryGroups must be an array")
         paths = set()
         for index, group in enumerate(groups):
             field = f"repositoryGroups[{index}]"

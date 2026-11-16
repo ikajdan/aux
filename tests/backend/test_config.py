@@ -87,7 +87,6 @@ class ConfigTests(unittest.TestCase):
         cases = [
             None,
             {},
-            [],
             [None],
             ["team/docs"],
             [{}],
