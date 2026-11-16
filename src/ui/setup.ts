@@ -48,17 +48,19 @@ export function createSetupDialog({ getSettings, validateToken, saveField, persi
     for (const key of settingsKeys) $<HTMLInputElement>(`setup-${key}`).value = getSettings()[key] || "";
     const background = [document.querySelector<HTMLElement>(".app-header"), document.querySelector("main")];
     for (const element of background) element.inert = true;
-    dialog.oncancel = (event) => {
-      if (setupSubmitting) event.preventDefault();
-    };
+    $("setup-close").hidden = true;
+    $("setup-close").disabled = true;
+    dialog.setAttribute("closedby", "none");
+    dialog.oncancel = (event) => event.preventDefault();
     dialog.onkeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.key !== "Tab" || event.defaultPrevented) return;
-      // Keep the header close action last without positive tabindex values.
-      const controls = [
-        ...cards[step].querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]"),
-        $("setup-next"),
-        $("setup-close"),
-      ].filter(
+
+      const controls = [...cards[step].querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]"), $("setup-next")].filter(
         (control) =>
           control.tabIndex >= 0 &&
           !control.matches(":disabled") &&
@@ -166,7 +168,7 @@ export function createSetupDialog({ getSettings, validateToken, saveField, persi
           const input = $("setup-token");
           const candidate = input.value;
           setupSubmitting = true;
-          $("setup-close").disabled = true;
+
           input.disabled = true;
           $("setup-next").disabled = true;
           $("setup-next-label").textContent = "Checking…";
@@ -188,7 +190,7 @@ export function createSetupDialog({ getSettings, validateToken, saveField, persi
             return;
           } finally {
             setupSubmitting = false;
-            $("setup-close").disabled = false;
+
             input.disabled = false;
             $("setup-next").disabled = false;
             $("setup-next-label").textContent = "Next";
