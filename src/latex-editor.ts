@@ -137,10 +137,13 @@ export function createEditor(parent: HTMLElement, onChange: (text: string) => vo
         requestAnimationFrame(() => {
           if (!group.matches(":popover-open")) return;
           const anchor = trigger.getBoundingClientRect();
-          const bounds = group.getBoundingClientRect();
+          const width = group.offsetWidth;
+          const height = group.offsetHeight;
           const gap = 8;
-          group.style.left = `${Math.max(gap, Math.min(anchor.left, innerWidth - bounds.width - gap))}px`;
-          group.style.top = `${Math.max(gap, anchor.bottom + bounds.height + gap <= innerHeight ? anchor.bottom + gap : anchor.top - bounds.height - gap)}px`;
+          const upwards = anchor.bottom + height + gap > innerHeight;
+          group.dataset.direction = upwards ? "up" : "down";
+          group.style.left = `${Math.max(gap, Math.min(anchor.left, innerWidth - width - gap))}px`;
+          group.style.top = `${Math.max(gap, upwards ? anchor.top - height - gap : anchor.bottom + gap)}px`;
           group.style.visibility = "";
           group.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
         });

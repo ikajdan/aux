@@ -227,6 +227,7 @@ textarea {
 .custom-select-trigger > .icon {
     flex-shrink: 0;
     margin: 0;
+    transition: transform var(--motion-fast) var(--ease-out);
 }
 .custom-select-trigger[aria-expanded="true"] > .icon {
     transform: rotate(180deg);
@@ -242,6 +243,30 @@ textarea {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-floating);
+    --dropdown-offset: -4px;
+    transform-origin: top center;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition:
+        opacity var(--motion-fast) var(--ease-out),
+        transform var(--motion-fast) var(--ease-out),
+        display var(--motion-fast) allow-discrete;
+}
+.custom-select-popup[data-direction="up"] {
+    --dropdown-offset: 4px;
+    transform-origin: bottom center;
+}
+.custom-select-popup[hidden] {
+    display: none;
+    opacity: 0;
+    transform: translateY(var(--dropdown-offset)) scale(0.98);
+    pointer-events: none;
+}
+@starting-style {
+    .custom-select-popup:not([hidden]) {
+        opacity: 0;
+        transform: translateY(var(--dropdown-offset)) scale(0.98);
+    }
 }
 .custom-select-popup [role="option"] {
     padding-block: calc(var(--space-2) - 2px);

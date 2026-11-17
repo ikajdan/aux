@@ -379,11 +379,35 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-floating);
+    --dropdown-offset: -4px;
+    transform-origin: top center;
+    opacity: 0;
+    transform: translateY(var(--dropdown-offset)) scale(0.98);
+    transition:
+        opacity var(--motion-fast) var(--ease-out),
+        transform var(--motion-fast) var(--ease-out),
+        display var(--motion-fast) allow-discrete,
+        overlay var(--motion-fast) allow-discrete;
+}
+.snippet-popover[data-direction="up"] {
+    --dropdown-offset: 4px;
+    transform-origin: bottom center;
+}
+.snippet-popover:not(:popover-open) {
+    pointer-events: none;
 }
 .snippet-popover:popover-open {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+@starting-style {
+    .snippet-popover:popover-open {
+        opacity: 0;
+        transform: translateY(var(--dropdown-offset)) scale(0.98);
+    }
 }
 .snippet-popover > button {
     display: flex;

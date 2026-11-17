@@ -64,6 +64,7 @@ export function createSelect(select: HTMLSelectElement) {
     const below = Math.max(0, innerHeight - rect.bottom - 8);
     const above = Math.max(0, rect.top - 8);
     const upwards = below < 160 && above > below;
+    popup.dataset.direction = upwards ? "up" : "down";
     const height = Math.min(256, upwards ? above : below);
     const width = Math.min(Math.max(rect.width, 180), innerWidth - 16);
     popup.style.width = `${width}px`;
