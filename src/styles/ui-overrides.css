@@ -16,23 +16,23 @@
     justify-content: space-between;
     height: var(--brand-copy-height);
     gap: var(--space-1);
-    transform: translateY(1px);
 }
 #home .brand-name {
     line-height: 1;
 }
 @supports (text-box-trim: trim-both) and (text-box-edge: cap alphabetic) {
-    #home .brand-name {
+    #home .brand-name,
+    #home .brand-tagline,
+    .settings-about-brand h3,
+    .settings-about-brand span {
         text-box-trim: trim-both;
         text-box-edge: cap alphabetic;
-        transform: none;
     }
 }
 #home .brand-tagline {
-    transform: translateY(-1px);
     color: var(--muted);
     font-size: var(--text-2xs);
-    line-height: 1.2;
+    line-height: 1;
     font-weight: 400;
     letter-spacing: normal;
     white-space: nowrap;
@@ -58,9 +58,9 @@
 }
 #home img {
     display: block;
-    height: var(--brand-logo-height);
+    height: var(--brand-copy-height);
     width: auto;
-    max-height: var(--brand-logo-height);
+    max-height: var(--brand-copy-height);
     max-width: 110px;
     object-fit: contain;
     object-position: left center;

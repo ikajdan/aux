@@ -31,7 +31,7 @@
     --control-height-sm: 2rem;
     --floating-bottom-offset: max(var(--space-2), env(safe-area-inset-bottom));
     --brand-logo-height: 34px;
-    --brand-copy-height: 36px;
+    --brand-copy-height: 40px;
     --pane-header-height: 4.25rem;
     --app-header-height: 3.5rem;
     --dialog-width: 40rem;

@@ -555,6 +555,8 @@ $("shortcuts-dialog").onclose = () => {
   updatePageTitle();
   restoreFocus(shortcutsFocus);
 };
+$("about-version").textContent = __APP_VERSION__;
+$<HTMLAnchorElement>("about-version").href = `https://github.com/ikajdan/aux/releases/tag/v${encodeURIComponent(__APP_VERSION__)}`;
 $("app-menu").onclick = openConnection;
 $("connection-dialog").onclose = () => {
   saveSettingsFields();

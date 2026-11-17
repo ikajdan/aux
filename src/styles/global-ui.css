@@ -432,9 +432,7 @@ summary {
 #connection-dialog .settings-feedback > p {
     margin: 0;
 }
-.settings-feedback:has(#connection-status:not(:empty), #custom-repositories-status:not(:empty)) > .settings-storage-hint {
-    display: none;
-}
+
 .dialog-shell {
     --dialog-padding: var(--space-6);
     width: min(var(--dialog-width), calc(100% - var(--space-8)));
@@ -469,6 +467,59 @@ summary {
 }
 .app-dialog {
     width: min(var(--dialog-width-compact), calc(100% - var(--space-8)));
+}
+#connection-dialog .settings-about {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-3) var(--space-8);
+}
+#connection-dialog #settings-about-heading {
+    flex-basis: 100%;
+    margin-bottom: 0;
+}
+.settings-about-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+.settings-about-brand > img {
+    display: block;
+    width: auto;
+    height: var(--brand-copy-height);
+}
+.settings-about-brand > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: var(--brand-copy-height);
+    gap: var(--space-1);
+}
+.settings-about-brand h3 {
+    margin: 0;
+    font-family: var(--font-brand);
+    font-size: var(--text-lg);
+    line-height: 1;
+}
+.settings-about-brand span,
+.settings-about-details {
+    font-size: var(--text-xs);
+    color: var(--muted);
+}
+.settings-about-brand span {
+    line-height: 1;
+}
+.settings-about-details {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+}
+.settings-about-details dd {
+    margin: 0;
+    color: var(--text);
+    overflow-wrap: anywhere;
 }
 .app-dialog p {
     margin: var(--space-4) 0 var(--space-5);
