@@ -521,6 +521,28 @@ summary {
     color: var(--text);
     overflow-wrap: anywhere;
 }
+.startup-message {
+    display: grid;
+    gap: var(--space-4);
+    width: min(var(--dialog-width-compact), calc(100% - var(--space-8)));
+    margin: var(--space-8) auto;
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+.startup-message h1 {
+    margin: 0;
+    font-size: var(--text-lg);
+}
+.startup-message p {
+    margin: 0;
+    color: var(--muted);
+    line-height: var(--leading-normal);
+}
+.startup-message button {
+    justify-self: start;
+}
 .app-dialog p {
     margin: var(--space-4) 0 var(--space-5);
     color: var(--muted);
