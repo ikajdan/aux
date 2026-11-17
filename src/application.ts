@@ -952,7 +952,7 @@ async function run(
     editor.setBusy(false);
     updateFilenameSaveState();
     const searchPanel = $("project-search-panel");
-    if (!searchPanel || !searchPanel.contains(document.activeElement)) restoreFocus(previousFocus);
+    if (!editor.hasFocus() && (!searchPanel || !searchPanel.contains(document.activeElement))) restoreFocus(previousFocus);
     void processNavigation();
   }
 }
@@ -1774,6 +1774,7 @@ async function compileDocument(operation: ReturnType<typeof createBuildOperation
   const body = JSON.stringify({ files, buildId: operation.id });
   validateRequestSize(body, serverConfig.limits);
   signal.throwIfAborted();
+  editor.setBusy(false);
   progress({ phase: "compiling" });
   const response = await operation.request(body);
   const result = await response.json();
