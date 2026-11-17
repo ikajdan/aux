@@ -227,6 +227,50 @@ function $(id: string): HTMLElement {
 }
 const branchSelect = createSelect($("branches"));
 const targetBranchSelect = createSelect($("target-remote-branches"));
+function setSidebarBranches(names: string[]) {
+  branchSelect.setOptions(names.filter((name) => name !== ":new-branch"));
+  const addNew = document.createElement("option");
+  addNew.value = ":new-branch";
+  addNew.textContent = "New branch…";
+  addNew.dataset.separator = "true";
+  $("branches").append(addNew);
+  branchSelect.rebuild();
+}
+$("branches").onchange = () => {
+  if ($("branches").value !== ":new-branch") return;
+  branchSelect.setValue(meta?.branch || "");
+  void run(
+    async () => {
+      if (!project || !meta) throw new Error("Open a project first.");
+      const sourceBranch = meta.branch;
+      const name = await promptDialog(
+        "Enter a name for the new remote branch. It will start at the current workspace's pulled revision. Local changes are not included.",
+        {
+          title: "New remote branch",
+          label: "Branch name",
+          inputHint: { text: "This branch will be based on ", code: sourceBranch },
+          icon: "branch",
+          confirmLabel: "Create branch",
+          confirmIcon: "branch",
+        },
+      );
+      if (!name?.trim()) return false;
+      if (!(await resolveEditorDraft())) return false;
+      status("Creating branch…", "busy");
+      await api.request(`projects/${encodeURIComponent(project.id)}/repository/branches`, {
+        branch: name.trim(),
+        ref: meta.remote,
+      });
+      await refreshRemoteBranches();
+      await switchToPublishedBranch(name.trim());
+    },
+    "Creating branch",
+    false,
+    false,
+    { initialProgress: false },
+  );
+};
+
 const theme = createThemeController({
   root: document.documentElement,
   groups: [...document.querySelectorAll<HTMLElement>(".theme-options")],
@@ -406,7 +450,7 @@ async function reviewWorkspaceStatus(id: ProjectId, kind: WorkspaceStatusKind) {
     if (String(project?.id) !== String(id)) treeProject = null;
     project = p;
     const local = Object.values(workspaces).filter((m) => String(m.project) === String(id));
-    branchSelect.setOptions(local.map((m) => m.branch));
+    setSidebarBranches(local.map((m) => m.branch));
     await activate(m, { build: false });
   }
   selectSidebarTab($("project-tab"));
@@ -522,15 +566,19 @@ $("connection-dialog").onclose = () => {
 const targetBranchCache = new Map<string, string[]>();
 function updateTargetBranches(names = targetBranchCache.get(String(project?.id)) || []) {
   const select = $("target-remote-branches");
+  const target = $("target").value;
   const placeholder = document.createElement("option");
   placeholder.value = "";
   placeholder.hidden = true;
   placeholder.disabled = true;
-  placeholder.selected = true;
-  placeholder.textContent = names.length ? "Existing branch…" : "No remote branches";
+  placeholder.textContent = "Select branch…";
+  const addNew = document.createElement("option");
+  addNew.value = ":new-branch";
+  addNew.textContent = "New branch…";
+  addNew.dataset.separator = "true";
   select.replaceChildren(
     placeholder,
-    ...[...new Set(names)]
+    ...[...new Set([...names, ...(target ? [target] : [])])]
       .sort((a, b) => a.localeCompare(b))
       .map((name) => {
         const option = document.createElement("option");
@@ -538,17 +586,29 @@ function updateTargetBranches(names = targetBranchCache.get(String(project?.id))
         option.textContent = name;
         return option;
       }),
+    addNew,
   );
-  select.disabled = busy || currentPublishingAvailability().pushDisabled || !names.length;
+  select.value = target;
+  select.disabled = busy || currentPublishingAvailability().pushDisabled;
   targetBranchSelect.rebuild();
 }
-$("target-remote-branches").onchange = () => {
+$("target-remote-branches").onchange = async () => {
   const selected = $("target-remote-branches").value;
   if (busy || !selected) return;
-  $("target").value = selected;
-  targetBranchSelect.setValue("");
-  $("target").dispatchEvent(new Event("input", { bubbles: true }));
-  $("target").focus();
+  if (selected === ":new-branch") {
+    targetBranchSelect.setValue($("target").value);
+    const name = await promptDialog("Enter a name for the new remote branch. It will be created when you push commits.", {
+      title: "New remote branch",
+      label: "Branch name",
+      icon: "branch",
+      confirmLabel: "Use branch",
+    });
+    if (!name?.trim()) return;
+    $("target").value = name.trim();
+  } else {
+    $("target").value = selected;
+  }
+  updateTargetBranches();
 };
 async function loadTargetBranches() {
   const activeProject = project;
@@ -1062,7 +1122,7 @@ async function processNavigation() {
           } else if (cached) {
             treeProject = null;
             project = next.project;
-            branchSelect.setOptions(
+            setSidebarBranches(
               Object.values(workspaces)
                 .filter((m) => String(m.project) === String(project.id))
                 .map((m) => m.branch),
@@ -1118,8 +1178,8 @@ function showView(editor: boolean, { navigation = true, focus = true } = {}) {
   branchLabel.className = "project-branch-label";
   branchLabel.textContent = editor ? meta.branch : "";
   $("project-branch").replaceChildren(icon("branch"), branchLabel);
-  $("project-branch").title = "Open Sync tab";
-  $("project-branch").setAttribute("aria-label", editor ? `Open Sync tab for branch ${meta.branch}` : "Open Sync tab");
+  $("project-branch").title = "Open Repo tab";
+  $("project-branch").setAttribute("aria-label", editor ? `Open Repo tab for branch ${meta.branch}` : "Open Repo tab");
 
   if (editor) {
     $("project-link").href = `${serverConfig.gitlabUrl}/${project.path_with_namespace.split("/").map(encodeURIComponent).join("/")}`;
@@ -1760,7 +1820,7 @@ async function activate(m: ApplicationWorkspace, { build = true, focus = true } 
   await pdfPreview.reset();
   updateLog("");
 
-  $("target").value = m.branch === mergeRequestTarget() ? "" : m.branch;
+  $("target").value = m.branch;
   branchSelect.setValue(m.branch);
   await refresh();
   if ((await repo.files()).includes(serverConfig.mainDocument)) await openFile(serverConfig.mainDocument);
@@ -1817,7 +1877,7 @@ async function openProject(p: ApplicationProject) {
     branches = local.map((m) => m.branch);
     status(`Could not load remote branches (${e.message}). Opening cached workspace…`);
   }
-  branchSelect.setOptions([...new Set([...branches, ...local.map((m) => m.branch)])]);
+  setSidebarBranches([...new Set([...branches, ...local.map((m) => m.branch)])]);
   if (local.length) return activate(local.find((m) => m.branch === p.default_branch) || local[0]);
   else {
     branchSelect.setValue(p.default_branch || branches[0]);
@@ -1844,7 +1904,7 @@ async function refreshRemoteBranches() {
     );
     updateTargetBranches();
     const names = [...new Set([...remote.map((branch) => branch.name), ...local])];
-    branchSelect.setOptions(names);
+    setSidebarBranches(names);
     branchSelect.setValue(names.includes(selected) ? selected : names.includes(meta?.branch) ? meta.branch : names[0] || "");
     status("Branches refreshed.", "ready");
     return { statusHandled: true };
@@ -2148,7 +2208,7 @@ function updatePushControls() {
   $("publish-description").textContent =
     pushDisabled && meta && warningState(meta).known
       ? "No commits to push."
-      : "Choose a remote branch or enter a new branch name. New branches are created when you push.";
+      : "Choose an existing target branch or name a new one. New branches are created when you push.";
 }
 function updateMergeRequestControls() {
   updateCommitControls();
@@ -2179,7 +2239,7 @@ async function switchToPublishedBranch(branch: string) {
   const previousBranch = meta.branch;
   const previousFile = file;
   const branches = [...$("branches").options].map((option) => option.value);
-  branchSelect.setOptions([...new Set([...branches, branch])]);
+  setSidebarBranches([...new Set([...branches, branch])]);
   branchSelect.setValue(branch);
   try {
     const result = await pull(false, { build: false });
@@ -2904,7 +2964,7 @@ async function restoreActiveDocument() {
   try {
     treeProject = null;
     project = cachedProject;
-    branchSelect.setOptions([
+    setSidebarBranches([
       ...new Set(
         Object.values(workspaces)
           .filter((entry) => String(entry.project) === String(project.id))

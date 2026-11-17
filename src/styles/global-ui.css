@@ -252,6 +252,12 @@ textarea {
     text-align: left;
     overflow-wrap: anywhere;
 }
+.custom-select-popup .custom-select-separator {
+    height: 1px;
+    margin: var(--space-1) 2px;
+    background: var(--border);
+    pointer-events: none;
+}
 .custom-select-popup [role="option"]:is(:hover, .is-active) {
     border-color: transparent;
     background-color: var(--selected);
@@ -669,34 +675,41 @@ summary {
 #mr-result:empty {
     display: none;
 }
-.publishing-action-row {
+.publishing-field {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
     min-width: 0;
 }
 .publishing-action-row {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
 }
 .publishing-action-row > button {
     min-width: 6rem;
 }
 
-.publishing-step input {
-    width: 100%;
-}
-.publishing-push-row {
-    grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-2);
-}
-.publishing-push-row > input,
-.publishing-push-row > button,
-.publishing-push-row .custom-select-trigger {
+.publishing-action-row > input,
+.publishing-action-row > button,
+.publishing-action-row .custom-select-trigger {
+    box-sizing: border-box;
     height: var(--control-height);
     min-height: var(--control-height);
+    margin: 0;
 }
-.publishing-push-row > input {
+.publishing-action-row > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+}
+.publishing-action-row > button > .icon {
+    margin: 0;
+}
+.publishing-action-row > input {
+    width: 100%;
     min-width: 0;
 }
 

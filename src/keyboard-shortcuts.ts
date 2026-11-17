@@ -32,7 +32,7 @@ export function installShortcuts({ ready, saveAndBuild, files, sync, preview, lo
     },
     { group: "Navigation", label: "Files", keys: "Alt + 1", match: (e) => alt(e, "Digit1"), run: files },
     { group: "Navigation", label: "Search all files", keys: "Alt + 2", match: (e) => alt(e, "Digit2"), run: search },
-    { group: "Navigation", label: "Sync", keys: "Alt + 3", match: (e) => alt(e, "Digit3"), run: sync },
+    { group: "Navigation", label: "Repo", keys: "Alt + 3", match: (e) => alt(e, "Digit3"), run: sync },
     { group: "Navigation", label: "Preview", keys: "Alt + 4", match: (e) => alt(e, "Digit4"), run: preview },
     { group: "Navigation", label: "Logs", keys: "Alt + 5", match: (e) => alt(e, "Digit5"), run: logs },
     {

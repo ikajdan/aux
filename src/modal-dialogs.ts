@@ -9,6 +9,7 @@ export interface DialogOptions {
   icon?: IconName;
   label?: string;
   defaultValue?: string;
+  inputHint?: { text: string; code: string };
   cancelLabel?: string;
   confirmLabel?: string;
   confirmIcon?: IconName;
@@ -136,7 +137,19 @@ function showDialog(kind: DialogKind, message: string, options: SaveChangesOptio
           input.value = options.defaultValue || "";
           input.autocomplete = "off";
           input.setAttribute("aria-describedby", description.id);
-          form.append(label, input);
+          label.append(input);
+          form.append(label);
+          const inputHint = options.inputHint;
+          if (inputHint) {
+            const hint = document.createElement("p");
+            hint.id = `${id}-input-hint`;
+            hint.className = "hint";
+            const value = document.createElement("code");
+            value.textContent = inputHint.code;
+            hint.append(document.createTextNode(inputHint.text), value, document.createTextNode("."));
+            input.setAttribute("aria-describedby", `${description.id} ${hint.id}`);
+            form.insertBefore(hint, label);
+          }
           if (options.suggestions?.length) {
             const suggestions = document.createElement("div");
             suggestions.className = "dialog-suggestions";

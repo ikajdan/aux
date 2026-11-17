@@ -126,13 +126,24 @@ export function createSelect(select: HTMLSelectElement) {
       button.tabIndex = -1;
       button.setAttribute("role", "option");
       button.textContent = option.textContent;
+
       button.disabled = option.disabled;
       button.hidden = option.hidden;
       button.addEventListener("pointerdown", (event) => event.preventDefault());
       button.addEventListener("click", () => choose(index));
       return button;
     });
-    popup.replaceChildren(...choices);
+    popup.replaceChildren(
+      ...choices.flatMap<HTMLElement>((choice, index) => {
+        if (select.options[index].dataset.separator !== "true" || choice.hidden || !choices.slice(0, index).some((previous) => !previous.hidden)) {
+          return [choice];
+        }
+        const separator = document.createElement("div");
+        separator.className = "custom-select-separator";
+        separator.setAttribute("aria-hidden", "true");
+        return [separator, choice];
+      }),
+    );
     sync();
   }
 

@@ -158,7 +158,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
             </h1>
             <h2 id="title" hidden>
                 <a id="project-link" target="_blank" rel="noopener noreferrer"></a>
-                <button id="project-branch" type="button" aria-controls="project-panel" aria-label="Open Sync tab"></button>
+                <button id="project-branch" type="button" aria-controls="project-panel" aria-label="Open Repo tab"></button>
             </h2>
             <div class="header-actions">
                 <button
@@ -338,29 +338,37 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                     <section id="commit-options" class="publishing-step" aria-labelledby="commit-heading">
                         <h3 id="commit-heading">Commit</h3>
                         <p id="commit-description" class="hint">Record saved changes in this browser before publishing.</p>
-                        <div class="publishing-action-row">
-                            <label for="message">Commit message<input id="message" placeholder="Describe your changes" /></label>
-                            <button id="commit" data-icon="commit" class="primary" type="button">Create commit</button>
+                        <div class="publishing-field">
+                            <label for="message">Commit message</label>
+                            <div class="publishing-action-row">
+                                <input id="message" placeholder="Describe your changes" />
+                                <button id="commit" data-icon="commit" class="primary" type="button">Create commit</button>
+                            </div>
                         </div>
                     </section>
                     <section id="push-options" class="publishing-step" aria-labelledby="push-heading">
                         <h3 id="push-heading">Push Commits</h3>
                         <p id="publish-description" class="hint">Push local commits to an existing or new branch.</p>
-                        <label for="target">Target branch</label>
-                        <div class="publishing-action-row publishing-push-row">
-                            <select id="target-remote-branches" aria-label="Choose an existing remote branch">
-                                <option value="" hidden disabled selected>Existing branch…</option>
-                            </select>
-                            <input id="target" placeholder="Or enter a new branch name" autocomplete="off" spellcheck="false" />
-                            <button id="push" data-icon="push" class="primary" type="button">Push commits</button>
+                        <input id="target" type="hidden" />
+                        <div class="publishing-field">
+                            <label for="target-remote-branches">Target branch</label>
+                            <div class="publishing-action-row">
+                                <select id="target-remote-branches">
+                                    <option value="" hidden disabled selected>Select branch…</option>
+                                </select>
+                                <button id="push" data-icon="push" class="primary" type="button">Push commits</button>
+                            </div>
                         </div>
                     </section>
                     <section id="merge-request-options" class="publishing-step" aria-labelledby="mr-heading">
                         <h3 id="mr-heading">Open a Merge Request</h3>
                         <p id="mr-help" class="hint">The merge request will be based on the currently active branch.</p>
-                        <div class="publishing-action-row">
-                            <label for="mr-title">Merge request title<input id="mr-title" maxlength="255" placeholder="Defaults to commit title" /></label>
-                            <button id="create-mr" data-icon="branch" class="primary" type="button">Open merge request</button>
+                        <div class="publishing-field">
+                            <label for="mr-title">Merge request title</label>
+                            <div class="publishing-action-row">
+                                <input id="mr-title" maxlength="255" placeholder="Defaults to commit title" />
+                                <button id="create-mr" data-icon="branch" class="primary" type="button">Open merge request</button>
+                            </div>
                         </div>
                         <p id="mr-result" role="status" aria-live="polite"></p>
                     </section>
@@ -431,7 +439,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
             </section>
             <section id="workspace" hidden aria-labelledby="title">
                 <div class="workspace-grid">
-                    <aside class="pane files-pane" aria-label="Files and sync">
+                    <aside class="pane files-pane" aria-label="Files and repo">
                         <div class="pane-heading">
                             <div class="sidebar-tabs workspace-tabs" data-active-index="0" role="tablist" aria-label="Workspace sidebar">
                                 <button id="files-tab" data-icon="files" type="button" role="tab" aria-selected="true" aria-controls="files-panel">
@@ -451,14 +459,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                                 </button>
                                 <button
                                     id="project-tab"
-                                    data-icon="sync"
+                                    data-icon="repository"
                                     type="button"
                                     role="tab"
                                     aria-selected="false"
                                     aria-controls="project-panel"
                                     tabindex="-1"
                                 >
-                                    Sync
+                                    Repo
                                 </button>
                             </div>
                         </div>
