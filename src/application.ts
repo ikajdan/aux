@@ -1173,7 +1173,7 @@ function showView(editor: boolean, { navigation = true, focus = true } = {}) {
   const projectTopic = document.createElement("span");
   projectTopic.className = "project-link-label";
   projectTopic.textContent = projectName;
-  $("project-link").replaceChildren(projectTopic, icon("external"));
+  $("project-link").replaceChildren(projectTopic);
   $("project-link").title = `Open ${projectName} in GitLab`;
   $("project-link").setAttribute("aria-label", `Open ${projectName} in GitLab`);
   const branchLabel = document.createElement("span");

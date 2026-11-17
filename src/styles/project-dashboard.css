@@ -237,20 +237,21 @@ textarea:focus {
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
-    color: inherit;
+    color: var(--text);
     text-decoration: none;
     overflow-wrap: anywhere;
 }
-.repository-group-heading a:hover {
-    color: var(--accent);
+.repository-group-heading a:is(:hover, :focus-visible) {
+    color: var(--text);
     text-decoration: underline;
+    text-decoration-color: currentColor;
 }
+
 .repository-group-heading .icon {
     flex-shrink: 0;
-    width: var(--text-md);
-    height: var(--text-md);
+    width: var(--text-sm);
+    height: var(--text-sm);
     margin: 0;
-    transform: translateY(-1px);
     color: var(--muted);
 }
 .repository-card {
@@ -344,6 +345,10 @@ textarea:focus {
     font: inherit;
     text-align: left;
     overflow-wrap: anywhere;
+}
+#repos .repository-title {
+    text-decoration-skip-ink: none;
+    text-decoration-thickness: 1px;
 }
 #repos .repository-title:not(:disabled):hover {
     background: transparent;
