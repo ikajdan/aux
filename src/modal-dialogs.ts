@@ -196,7 +196,7 @@ function showDialog(kind: DialogKind, message: string, options: SaveChangesOptio
         confirm.className = options.destructive ? "destructive" : "primary";
         if (options.actionIcons !== false)
           confirm.prepend(icon(options.confirmIcon ?? (kind === "saveChanges" ? "save" : options.destructive ? (options.icon ?? "warning") : "check")));
-        if (kind !== "alert") actions.append(cancel);
+        if (kind !== "alert" && kind !== "saveChanges") actions.append(cancel);
         if (kind === "saveChanges") {
           const discard = document.createElement("button");
           discard.type = "button";
