@@ -723,6 +723,13 @@ function saveSettingsField(key: (typeof settingsKeys)[number], validate = false)
   settings = next;
   failedSettings.delete(key);
   settingsStatus(failedSettings.size ? "Could not save settings. Try again." : "", failedSettings.size ? "error" : "ready");
+  if (key === "token" && !$<HTMLDialogElement>("setup-dialog").open) {
+    void refreshDocuments({ background: true }).catch((error) => {
+      if (settings.token === value && input.value.trim() === value) {
+        settingsStatus(`Settings saved. Could not refresh documents: ${error.message}`, "error");
+      }
+    });
+  }
   if (!persistenceRequested) {
     persistenceRequested = true;
     Promise.resolve()
