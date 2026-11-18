@@ -46,6 +46,18 @@ Edit `server/config.json` before starting:
 - `templateRepository`: optional namespace/project path on the configured instance, for example `templates/latex-document`. New document button copies the template's default-branch files into an independent project with one initial commit and the same visibility.
 - `limits`: request size, imported file size/count, repository entry count, and submodule recursion depth. Sizes are in bytes.
 
+### Local overrides
+
+For local testing, put only the settings to override in `server/config.local.json`:
+
+```json
+{
+  "gitlabUrl": "https://gitlab.example.com",
+  "repositoryGroups": [],
+  "limits": { "snapshotFiles": 1000 }
+}
+```
+
 ## Installation
 
 ### Docker

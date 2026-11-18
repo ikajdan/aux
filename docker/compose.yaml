@@ -14,8 +14,10 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    environment:
+      AUX_CONFIG_FILE: /app/config/config.json
     volumes:
-      - ../server/config.json:/app/server/config.json:ro
+      - ../server:/app/config:ro,z
     tmpfs:
       - /tmp:size=2g,mode=1777
     pids_limit: 256

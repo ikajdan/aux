@@ -18,6 +18,16 @@ DEFAULT_LIMITS = {
 }
 
 
+def merge_config(base, overrides):
+    merged = {**base}
+    for key, value in overrides.items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = merge_config(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(path=None):
     path = Path(
         path
@@ -28,6 +38,25 @@ def load_config(path=None):
     )
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
+        local_path = path.with_name(f"{path.stem}.local{path.suffix}")
+        try:
+            local_text = local_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            local_text = None
+        except (OSError, UnicodeError) as error:
+            raise ValueError(
+                f"Could not read local config {local_path}: {error}"
+            ) from error
+        if local_text is not None:
+            try:
+                overrides = json.loads(local_text)
+                if not isinstance(config, dict) or not isinstance(overrides, dict):
+                    raise ValueError("base and local configs must be JSON objects")
+                config = merge_config(config, overrides)
+            except ValueError as error:
+                raise ValueError(
+                    f"Invalid local config {local_path}: {error}"
+                ) from error
         if (
             not isinstance(config, dict)
             or "gitlabUrl" not in config
