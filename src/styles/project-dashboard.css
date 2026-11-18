@@ -113,7 +113,7 @@
     gap: var(--space-2) var(--space-4);
 }
 .project-filter-actions > .hint {
-    font-size: var(--text-base);
+    font-size: var(--text-sm);
 }
 #project-clear-filters {
     display: block;
@@ -399,7 +399,7 @@ textarea:focus {
     min-height: var(--topic-height);
     max-width: 100%;
     padding: var(--space-1) calc(var(--space-1) + 2px);
-    font-size: calc(var(--text-2xs) + 1px);
+    font-size: var(--text-2xs);
     line-height: var(--leading-normal);
     color: var(--accent);
     background: var(--accent-surface-soft);
