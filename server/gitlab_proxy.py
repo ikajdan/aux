@@ -13,7 +13,43 @@ from flask import Response, jsonify, request
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None  # Never forward a PAT across redirects.
+        return None  # The relay validates canonical project aliases explicitly.
+
+
+def canonical_project_redirect(upstream, source_url, location):
+    if not location or any(ord(c) <= 32 or ord(c) == 127 for c in location):
+        return None
+    try:
+        base = urllib.parse.urlsplit(upstream)
+        source = urllib.parse.urlsplit(source_url)
+        target = urllib.parse.urlsplit(urllib.parse.urljoin(source_url, location))
+        if (
+            target.scheme != base.scheme
+            or target.netloc.lower() != base.netloc.lower()
+            or target.username is not None
+            or target.password is not None
+            or target.fragment
+        ):
+            return None
+        prefix = base.path + "projects/"
+        if not source.path.startswith(prefix) or not target.path.startswith(prefix):
+            return None
+        source_project, _, source_operation = source.path[len(prefix) :].partition("/")
+        target_project, _, target_operation = target.path[len(prefix) :].partition("/")
+        if (
+            not source_project
+            or not re.fullmatch(r"[1-9][0-9]*", target_project)
+            or target_operation != source_operation
+        ):
+            return None
+        if target.query and sorted(
+            urllib.parse.parse_qsl(target.query, keep_blank_values=True)
+        ) != sorted(urllib.parse.parse_qsl(source.query, keep_blank_values=True)):
+            return None
+        # GitLab can omit the query in Location; keep the pinned ref and pagination.
+        return urllib.parse.urlunsplit(target._replace(query=source.query))
+    except ValueError:
+        return None
 
 
 def relay(upstream, read_body):
@@ -56,10 +92,26 @@ def relay(upstream, read_body):
     opener = urllib.request.build_opener(
         NoRedirect(), urllib.request.HTTPSHandler(context=context)
     )
-    try:
-        response = opener.open(upstream_request, timeout=100)
-    except urllib.error.HTTPError as error:
-        response = error
+    for attempt in range(3):
+        try:
+            response = opener.open(upstream_request, timeout=100)
+        except urllib.error.HTTPError as error:
+            response = error
+        target = None
+        if request.method == "GET" and response.code in (301, 302, 303, 307, 308):
+            target = canonical_project_redirect(
+                upstream,
+                upstream_request.full_url,
+                response.headers.get("Location", ""),
+            )
+        if target is None or target == upstream_request.full_url or attempt == 2:
+            break
+        response.close()
+        upstream_request = urllib.request.Request(
+            target,
+            method="GET",
+            headers={"PRIVATE-TOKEN": token, "Content-Type": "application/json"},
+        )
     with response:
         data = response.read(64 * 1024 * 1024 + 1)
         if len(data) > 64 * 1024 * 1024:
