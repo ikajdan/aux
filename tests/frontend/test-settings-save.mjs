@@ -79,7 +79,7 @@ test("Settings has one form-linked Save button in a persistent footer", async ()
   assert.equal((html.match(/id="save-settings"/g) || []).length, 1);
   assert.match(
     html,
-    /class="settings-feedback">\s*<p class="settings-storage-hint hint">[^<]+<\/p>\s*<p id="connection-status"[^>]*><\/p>\s*<p id="custom-repositories-status"/,
+    /class="settings-feedback">\s*<p id="connection-status"[^>]*><\/p>\s*<p id="custom-repositories-status"/,
   );
   assert.match(html, /<button id="restore-settings" type="button"[^>]*>Restore changes<\/button>/);
   const css = await readFile("src/styles/global-ui.css", "utf8");
@@ -289,7 +289,7 @@ test("setup module saves in step order, persists theme before completion, and cl
   assert.ok(f.events.includes("remove:setup-pending"));
 });
 
-test("setup rejects unauthorized tokens without saving or advancing and unlocks controls", async () => {
+test("setup rejects unauthorized tokens without advancing, unlocks retry controls and keeps Close disabled", async () => {
   const f = setupFixture({
     validateToken: async () => {
       throw { status: 401 };
@@ -299,7 +299,9 @@ test("setup rejects unauthorized tokens without saving or advancing and unlocks 
   assert.equal(f.dialog.dataset.step, "0");
   assert.match(f.elements["setup-token-error"].textContent, /invalid or expired/);
   assert.equal(f.elements["setup-token"].hasAttribute("aria-invalid"), true);
-  for (const id of ["setup-token", "setup-close", "setup-next"]) assert.equal(f.elements[id].disabled, false);
+  for (const id of ["setup-token", "setup-next"]) assert.equal(f.elements[id].disabled, false);
+  assert.equal(f.elements["setup-close"].disabled, true);
+  assert.equal(f.elements["setup-close"].hidden, true);
   assert.equal(
     f.events.some((event) => event.startsWith("save:")),
     false,

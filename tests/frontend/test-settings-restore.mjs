@@ -15,7 +15,7 @@ async function extract(startMarker, endMarker) {
   return (await transform(source.slice(start, end), { loader: "ts" })).code;
 }
 const restoreCode = await extract("async function restoreSettings()", "function runSettingsAction(");
-const openCode = await extract("let settingsSnapshot", "for (const id of");
+const openCode = await extract("let settingsSnapshot", "let shortcutsFocus");
 const bundledTheme = await build({ entryPoints: ["src/ui/theme.ts"], bundle: true, write: false, format: "esm", platform: "node" });
 const { createThemeController } = await import(`data:text/javascript;base64,${Buffer.from(bundledTheme.outputFiles[0].text).toString("base64")}`);
 const keys = ["token", "author", "email"];

@@ -13,6 +13,7 @@ class Element extends EventTarget {
     this.children = [];
     this.attributes = new Map();
     this.style = {};
+    this.dataset = {};
     this.id = "";
     this.textContent = "";
     this.disabled = this.hidden = false;

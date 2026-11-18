@@ -136,7 +136,8 @@ for (const action of ["replace", "skip", "keep-both"]) {
 }
 
 for (const dismissal of ["cancel", "close", "escape", "backdrop", "programmatic"]) {
-  test(`upload conflict dismissal aborts: ${dismissal}`, async (t) => {
+  const name = dismissal === "backdrop" ? "upload conflict ignores outside clicks until explicitly closed" : `upload conflict dismissal aborts: ${dismissal}`;
+  test(name, { timeout: 2000 }, async (t) => {
     const { document, opener } = fixture(t);
     const result = uploadConflictDialog("main.tex");
     const dialog = await activeDialog(document);
@@ -153,6 +154,12 @@ for (const dismissal of ["cancel", "close", "escape", "backdrop", "programmatic"
         }).map(([key, value]) => [key, { value }])));
         document.dispatchEvent(event);
       }
+      let settled = false;
+      void result.then(() => { settled = true; });
+      await Promise.resolve();
+      assert.equal(dialog.open, true);
+      assert.equal(settled, false);
+      dialog.querySelector(".dialog-close").click();
     }
     assert.equal(await result, null);
     assert.equal(document.activeElement, opener);
