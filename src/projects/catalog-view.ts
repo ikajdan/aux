@@ -26,6 +26,7 @@ export interface CatalogWorkspaceIndicator {
 }
 interface CatalogViewOptions {
   repos: HTMLElement;
+  creationCard?: HTMLElement;
   refreshButton: HTMLElement;
   search: HTMLInputElement;
   topicFilters: HTMLElement;
@@ -42,6 +43,7 @@ interface CatalogViewOptions {
 
 export function createCatalogView({
   repos,
+  creationCard,
   refreshButton,
   search,
   topicFilters,
@@ -242,7 +244,7 @@ export function createCatalogView({
       });
 
     catalogHeadings.clear();
-    repos.replaceChildren();
+    repos.replaceChildren(...(creationCard ? [creationCard] : []));
     if (!matches.length) {
       const empty = document.createElement("p");
       empty.className = "hint";
@@ -324,14 +326,13 @@ export function createCatalogView({
         open.type = "button";
         open.onclick = () => openProject(p, "action");
         open.className = "primary";
-        actions.append(open);
         const remote = document.createElement("a");
         remote.href = `${gitlabUrl}/${p.path_with_namespace.split("/").map(encodeURIComponent).join("/")}`;
         remote.target = "_blank";
         remote.rel = "noopener noreferrer";
         remote.className = "repository-link";
         remote.append(icon("repository"), document.createTextNode("View in GitLab"));
-        actions.append(remote);
+        actions.append(remote, open);
         row.append(actions);
         section.append(row);
       }

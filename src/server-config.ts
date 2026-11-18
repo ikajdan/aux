@@ -17,6 +17,7 @@ export interface ServerConfig {
   limits: SnapshotLimits;
   maxConcurrentBuilds: number;
   mainDocument: string;
+  templateRepository: string;
 }
 export let serverConfig: ServerConfig;
 

@@ -21,6 +21,7 @@ class RelayTests(unittest.TestCase):
                 ("GET", "/api/users?username=foo"),
                 ("GET", "/api/users/42/projects?page=2"),
                 ("POST", "/api/projects/1"),
+                ("POST", "/api/projects"),
             ):
                 with self.subTest(method=method):
                     response = self.client.open(path, method=method, json={})
@@ -61,6 +62,31 @@ class RelayTests(unittest.TestCase):
                 self.assertEqual(
                     outbound.get_header("Content-type"), "application/json"
                 )
+
+    def test_project_creation_forwards_json_and_pat_intact(self):
+        payload = (
+            b'{"name":"New project","namespace_id":42,"initialize_with_readme":true}'
+        )
+        with patch.object(gitlab_proxy.urllib.request, "build_opener") as build_opener:
+            upstream = build_opener.return_value.open.return_value
+            upstream.__enter__.return_value = upstream
+            upstream.code = 201
+            upstream.read.return_value = b'{"id":123}'
+            response = self.client.post(
+                "/api/projects",
+                data=payload,
+                content_type="application/json",
+                headers={"PRIVATE-TOKEN": "test-pat"},
+            )
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.get_json(), {"id": 123})
+            build_opener.return_value.open.assert_called_once()
+            outbound = build_opener.return_value.open.call_args.args[0]
+            self.assertEqual(outbound.full_url, self.upstream + "projects")
+            self.assertEqual(outbound.get_method(), "POST")
+            self.assertEqual(outbound.data, payload)
+            self.assertEqual(outbound.get_header("Private-token"), "test-pat")
+            self.assertEqual(outbound.get_header("Content-type"), "application/json")
 
     def test_personal_namespace_gets_preserve_url_token_and_response(self):
         for endpoint, payload in (
@@ -177,6 +203,7 @@ class RelayTests(unittest.TestCase):
 
     def test_disallowed_paths_never_create_an_outbound_client(self):
         paths = (
+            "/api/projects",
             "/api/admin/users",
             "/api/projects/../users",
             "/api/projects/%2e%2e/users",

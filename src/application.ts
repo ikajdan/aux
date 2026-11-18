@@ -55,6 +55,7 @@ import { downloadBlob } from "./ui/download-blob.js";
 import { operationProgress } from "./ui/operation-progress.js";
 import { handleMenuKeydown } from "./ui/menu-keyboard.js";
 import { createFileOperationProgress } from "./ui/file-operation-progress.js";
+import { initializeNewProject } from "./projects/new-project.js";
 import { initializeDialogShells } from "./ui/dialog-shell.js";
 import { localChangeBranches } from "./workspace/local-changes.js";
 import { EditorDraft } from "./workspace/editor-draft.js";
@@ -313,6 +314,7 @@ let catalog: ApplicationProject[] = loadProjects();
 
 const catalogView = createCatalogView({
   repos: $("repos"),
+  creationCard: $("new-project-card"),
   refreshButton: $("repositories"),
   search: $("project-search"),
   topicFilters: $("project-topic-filters"),
@@ -555,6 +557,24 @@ $("shortcuts-dialog").onclose = () => {
   updatePageTitle();
   restoreFocus(shortcutsFocus);
 };
+initializeNewProject({
+  api,
+  config: serverConfig,
+  getToken: () => $("token").value,
+  onCreated: (created) => {
+    if (!repositoryGroupFor(created, serverConfig.repositoryGroups) && !customRepositoryMatches(created, customRepositories)) {
+      const paths = [...customRepositories, created.path_with_namespace];
+      const next = { ...settings, customRepositories: paths };
+      localStorage.setItem("aux-settings", JSON.stringify(next));
+      settings = next;
+      customRepositories = paths;
+      $<HTMLTextAreaElement>("custom-repositories").value = paths.join("\n");
+    }
+    catalog = [...catalog.filter((entry) => String(entry.id) !== String(created.id)), created];
+    renderCatalog();
+  },
+  onReady: () => refreshDocuments(),
+});
 $("about-version").textContent = __APP_VERSION__;
 $<HTMLAnchorElement>("about-version").href = `https://github.com/ikajdan/aux/releases/tag/v${encodeURIComponent(__APP_VERSION__)}`;
 $("app-menu").onclick = openConnection;

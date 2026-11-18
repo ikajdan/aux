@@ -40,10 +40,11 @@ def load_config(path=None):
                 "limits",
                 "maxConcurrentBuilds",
                 "mainDocument",
+                "templateRepository",
             }
         ):
             raise ValueError(
-                "expected gitlabUrl, exactly one of repositoryGroups or legacy repositoryGroup, and optional limits, maxConcurrentBuilds, and mainDocument"
+                "expected gitlabUrl, exactly one of repositoryGroups or legacy repositoryGroup, and optional limits, maxConcurrentBuilds, mainDocument, and templateRepository"
             )
         url = config["gitlabUrl"]
         if (
@@ -97,6 +98,18 @@ def load_config(path=None):
                 raise ValueError("repositoryGroups paths must be unique")
             paths.add(group_path)
 
+        template_repository = config.get("templateRepository", "")
+        if not isinstance(template_repository, str) or (
+            template_repository
+            and not re.fullmatch(
+                r"[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)+",
+                template_repository,
+            )
+        ):
+            raise ValueError(
+                "templateRepository must be empty or a safe GitLab namespace/project path"
+            )
+
         max_concurrent_builds = config.get("maxConcurrentBuilds", 6)
         if (
             type(max_concurrent_builds) is not int
@@ -137,6 +150,7 @@ def load_config(path=None):
             "limits": effective_limits,
             "maxConcurrentBuilds": max_concurrent_builds,
             "mainDocument": main_document,
+            "templateRepository": template_repository,
         }
     except (OSError, UnicodeError, ValueError) as error:
         raise ValueError(f"Invalid Aux config {path}: {error}") from error

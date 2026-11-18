@@ -3,6 +3,7 @@
   "repositoryGroups": [{ "name": "Documents", "path": "example/documents" }],
   "maxConcurrentBuilds": 6,
   "mainDocument": "main.tex",
+  "templateRepository": "example/template",
   "limits": {
     "requestBytes": 41943040,
     "snapshotBytes": 31457280,

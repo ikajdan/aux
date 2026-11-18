@@ -566,6 +566,48 @@ summary {
 .app-dialog input {
     width: 100%;
 }
+#new-project-dialog .dialog-body > p {
+    white-space: normal;
+}
+.new-project-fields {
+    display: grid;
+    gap: var(--space-4);
+}
+.new-project-identity {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: end;
+    gap: var(--space-2);
+}
+.new-project-slash {
+    display: grid;
+    place-items: center;
+    height: var(--control-height);
+    color: var(--muted);
+}
+#new-project-result {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+#new-project-result .icon {
+    width: 1em;
+    height: 1em;
+    margin: 0;
+}
+#new-project-form input[aria-invalid="true"] {
+    border-color: var(--error);
+}
+#new-project-form input[aria-invalid="true"]:focus-visible {
+    outline-color: var(--error);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 14%, transparent);
+}
+#new-project-status[data-state="error"] {
+    color: var(--error);
+}
+#new-project-status:empty {
+    display: none;
+}
 #shortcuts-dialog {
     width: min(var(--dialog-width), calc(100% - var(--space-8)));
 }

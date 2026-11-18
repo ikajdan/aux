@@ -181,6 +181,54 @@ SPDX-License-Identifier: AGPL-3.0-or-later
         </header>
         <main>
             <dialog
+                id="new-project-dialog"
+                class="app-dialog"
+                aria-labelledby="new-project-title"
+                data-dialog-title="New project"
+                data-dialog-icon="new-folder"
+                data-dialog-close="new-project-close"
+            >
+                <div class="dialog-body">
+                    <p>Create a new document using a template.</p>
+                    <form id="new-project-form" novalidate>
+                        <div class="new-project-fields">
+                            <label for="new-project-name"
+                                >Project name
+                                <input id="new-project-name" required maxlength="255" autocomplete="off" aria-describedby="new-project-status" />
+                            </label>
+                            <div class="new-project-identity">
+                                <label for="new-project-namespace"
+                                    >Namespace
+                                    <select id="new-project-namespace">
+                                        <option value="">My namespace</option>
+                                    </select>
+                                </label>
+                                <span class="new-project-slash" aria-hidden="true">/</span>
+                                <label for="new-project-path"
+                                    >Project path
+                                    <input
+                                        id="new-project-path"
+                                        required
+                                        maxlength="255"
+                                        pattern="[a-zA-Z0-9](?:[a-zA-Z0-9_\-]*[a-zA-Z0-9])?"
+                                        aria-describedby="new-project-status"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                        <p id="new-project-status" class="hint" role="status" aria-live="polite"></p>
+                        <a id="new-project-result" target="_blank" rel="noopener noreferrer" hidden
+                            >Open created project in GitLab<span data-icon="external" aria-hidden="true"></span
+                        ></a>
+                        <div class="dialog-actions">
+                            <button id="create-project" class="primary" type="submit">Create project</button>
+                        </div>
+                    </form>
+                </div>
+            </dialog>
+            <dialog
                 id="shortcuts-dialog"
                 class="app-dialog"
                 aria-labelledby="shortcuts-title"
@@ -398,6 +446,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                 <div class="dashboard-heading">
                     <div class="projects-heading-actions">
                         <h2 id="repositories-heading" tabindex="-1">Documents</h2>
+
                         <button
                             id="repositories"
                             data-icon="refresh"
@@ -422,7 +471,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                         </label>
                     </div>
                 </div>
-                <p class="projects-description hint">Browse and edit documents by group, or open a group in GitLab.</p>
+                <p class="projects-description hint">Open an existing document or create a new one from a template.</p>
 
                 <div class="document-list-controls">
                     <div class="project-sort-toolbar" role="group" aria-label="Sort documents">
@@ -441,7 +490,32 @@ SPDX-License-Identifier: AGPL-3.0-or-later
                     </div>
                 </div>
 
-                <div id="repos"></div>
+                <div id="repos">
+                    <article id="new-project-card" class="repository-card" hidden>
+                        <div class="repository-details">
+                            <span class="repository-badge repository-badge-tone-</article>1" data-icon="plus" aria-hidden="true"></span>
+                            <div class="repository-info">
+                                <h3>
+                                    <button
+                                        id="new-project-title-action"
+                                        class="repository-title"
+                                        type="button"
+                                        aria-haspopup="dialog"
+                                        aria-controls="new-project-dialog"
+                                    >
+                                        New document
+                                    </button>
+                                </h3>
+                                <div class="repository-metadata"><p class="hint">Create a document from a template.</p></div>
+                            </div>
+                        </div>
+                        <div class="repository-actions">
+                            <button id="new-project" class="primary" data-icon="new" type="button" aria-haspopup="dialog" aria-controls="new-project-dialog">
+                                New document
+                            </button>
+                        </div>
+                    </article>
+                </div>
                 <button
                     id="project-clear-filters"
                     type="button"

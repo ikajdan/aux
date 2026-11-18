@@ -53,6 +53,7 @@ class ConfigTests(unittest.TestCase):
             "limits": self.config["limits"],
             "maxConcurrentBuilds": 6,
             "mainDocument": "main.tex",
+            "templateRepository": "",
         }
         self.assertEqual(
             json.loads(result.stdout),
@@ -164,6 +165,7 @@ class ConfigTests(unittest.TestCase):
                 "limits",
                 "maxConcurrentBuilds",
                 "mainDocument",
+                "templateRepository",
             },
         )
         self.assertEqual(effective["limits"], configuration.DEFAULT_LIMITS)
@@ -178,6 +180,39 @@ class ConfigTests(unittest.TestCase):
             effective["limits"],
             {**configuration.DEFAULT_LIMITS, "requestBytes": 123, "submoduleDepth": 0},
         )
+
+    def test_template_repository_defaults_and_paths_are_served(self):
+        for template in (
+            None,
+            "",
+            "team/template",
+            "team/docs/sub_group.v2-1/template",
+        ):
+            with self.subTest(template=template):
+                config = dict(self.config)
+                if template is not None:
+                    config["templateRepository"] = template
+                self.write_config(config)
+                effective = configuration.load_config(self.path)
+                self.assertEqual(effective["templateRepository"], template or "")
+                with patch.object(server, "CONFIG", effective):
+                    response = server.app.test_client().get("/config")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.get_json()["templateRepository"], template or ""
+                )
+
+    def test_invalid_template_repositories(self):
+        for template in (
+            "https://gitlab.example/team/template",
+            "team/../template",
+            None,
+            42,
+        ):
+            with self.subTest(template=template):
+                self.write_config({**self.config, "templateRepository": template})
+                with self.assertRaisesRegex(ValueError, "templateRepository"):
+                    configuration.load_config(self.path)
 
     def test_main_document_defaults_to_main_tex(self):
         self.write_config(self.config)

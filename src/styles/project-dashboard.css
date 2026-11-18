@@ -25,6 +25,28 @@
     align-items: center;
     gap: var(--space-1);
 }
+#new-project-card {
+    margin-top: var(--space-4);
+    background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+    border-color: var(--border);
+    border-style: dashed;
+}
+#new-project-card .repository-badge {
+    background: var(--subtle);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+#repos #new-project-card .repository-title {
+    color: var(--text);
+}
+#repos #new-project-card .repository-title:hover {
+    color: var(--text);
+}
+#new-project-card .repository-badge > .icon {
+    width: var(--text-lg);
+    height: var(--text-lg);
+    margin: 0;
+}
 #repositories {
     display: inline-flex;
     align-items: center;
