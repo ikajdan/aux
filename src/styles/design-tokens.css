@@ -68,9 +68,9 @@
     --switch-hover: color-mix(in srgb, var(--accent) 8%, transparent);
     --switch-text: color-mix(in srgb, var(--text) 72%, var(--muted));
     --accent: #326447;
-    --primary: #397650;
-    --primary-hover: #2f6343;
-    --on-primary: #fff;
+    --primary: color-mix(in srgb, var(--accent) 26%, var(--surface));
+    --primary-hover: color-mix(in srgb, var(--accent) 34%, var(--surface));
+    --on-primary: var(--text);
 
     --success: #28633e;
     --busy: #805b18;
@@ -91,9 +91,6 @@
     --switch-frame-border: color-mix(in srgb, var(--accent) 28%, transparent);
     --switch-hover: rgb(254 254 254 / 6%);
     --accent: #b5d9be;
-    --primary: #b5d9be;
-    --primary-hover: #c8e5cf;
-    --on-primary: #203b29;
 
     --success: #a3d4b0;
     --busy: #e0bd79;
@@ -115,9 +112,6 @@
         --switch-frame-border: color-mix(in srgb, var(--accent) 28%, transparent);
         --switch-hover: rgb(254 254 254 / 6%);
         --accent: #b5d9be;
-        --primary: #b5d9be;
-        --primary-hover: #c8e5cf;
-        --on-primary: #203b29;
 
         --success: #a3d4b0;
         --busy: #e0bd79;
