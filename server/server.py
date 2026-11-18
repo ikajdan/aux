@@ -3,10 +3,12 @@
 
 import binascii
 import json
+import logging
 import os
 import secrets
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 from pathlib import Path
@@ -20,9 +22,11 @@ if not __package__:
     __package__ = "server"
 
 from . import artifacts, compilation, configuration, gitlab_proxy
+from .logging_setup import configure_logging, safe_log_value
 
 ROOT = Path(__file__).resolve().parent.parent / "dist"
 CONFIG = configuration.load_config()
+configure_logging(CONFIG["logLevel"])
 artifact_store = artifacts.ArtifactStore()
 compiler = compilation.CompilationService(CONFIG, artifact_store)
 
@@ -32,6 +36,8 @@ app.config["MAX_CONTENT_LENGTH"] = CONFIG["limits"]["requestBytes"]
 
 @app.before_request
 def check_origin():
+    g.request_id = secrets.token_hex(8)
+    g.request_started = time.monotonic()
     origin = request.headers.get("Origin")
     if request.headers.get("Sec-Fetch-Site") == "cross-site" or (
         origin and urllib.parse.urlsplit(origin).netloc != request.host
@@ -49,6 +55,31 @@ def security_headers(response):
         f"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; {style_src}; connect-src 'self'; img-src 'self' blob:; worker-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
     )
     response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Request-ID"] = g.request_id
+    return response
+
+
+@app.after_request
+def log_request(response):
+    elapsed = (time.monotonic() - g.request_started) * 1000
+    if response.status_code >= 500:
+        level = logging.ERROR
+    elif response.status_code >= 400:
+        level = logging.WARNING
+    elif request.method == "POST" or request.path in ("/", "/index.html"):
+        level = logging.INFO
+    else:
+        level = logging.DEBUG
+    app.logger.log(
+        level,
+        "request method=%s path=%s status=%s duration_ms=%.1f request_bytes=%s response_bytes=%s",
+        request.method,
+        safe_log_value(request.path),
+        response.status_code,
+        elapsed,
+        request.content_length or 0,
+        response.content_length,
+    )
     return response
 
 
@@ -83,6 +114,12 @@ def invalid_request(error):
 @app.errorhandler(OSError)
 @app.errorhandler(urllib.error.URLError)
 def upstream_error(error):
+    app.logger.warning(
+        "upstream_error type=%s reason_type=%s errno=%s",
+        type(error).__name__,
+        type(getattr(error, "reason", None)).__name__,
+        getattr(error, "errno", None),
+    )
     return jsonify(error=str(error)), 502
 
 
@@ -139,10 +176,20 @@ def static_asset(path):
 
 def main():
     threading.Thread(target=artifact_store.janitor, daemon=True).start()
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8080"))
+    app.logger.info(
+        "server_start host=%s port=%s gitlab=%s log_level=%s max_concurrent_builds=%s",
+        safe_log_value(host),
+        port,
+        CONFIG["gitlabUrl"],
+        CONFIG["logLevel"],
+        CONFIG["maxConcurrentBuilds"],
+    )
     serve(
         app,
-        host=os.environ.get("HOST", "127.0.0.1"),
-        port=int(os.environ.get("PORT", "8080")),
+        host=host,
+        port=port,
         threads=8,
         connection_limit=100,
         backlog=100,

@@ -63,6 +63,16 @@ export function makeAPI(token: () => string, fetcher: typeof fetch = fetch, obse
       throw error;
     }
     notify(response.status);
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const target = response.headers.get("X-Aux-Upstream-Redirect");
+      const path = endpoint.split("?", 1)[0];
+      const error: GitLabError = new Error(
+        `GitLab redirected ${path} (HTTP ${response.status})${target ? ` to ${target}` : ""}. ` +
+          "The redirect was blocked to protect your access token. Check the GitLab instance URL and whether the project or a submodule was moved.",
+      );
+      error.status = response.status;
+      throw error;
+    }
     let data: unknown;
     try {
       data = await response.json();

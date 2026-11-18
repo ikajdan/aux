@@ -1,14 +1,20 @@
 # SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import logging
 import os
 import re
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from flask import Response, jsonify, request
+
+from .logging_setup import safe_log_value
+
+logger = logging.getLogger(__name__)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -93,10 +99,39 @@ def relay(upstream, read_body):
         NoRedirect(), urllib.request.HTTPSHandler(context=context)
     )
     for attempt in range(3):
+        started = time.monotonic()
+        upstream_path = safe_log_value(
+            urllib.parse.urlsplit(upstream_request.full_url).path
+        )
         try:
             response = opener.open(upstream_request, timeout=100)
         except urllib.error.HTTPError as error:
             response = error
+        except (OSError, urllib.error.URLError) as error:
+            logger.error(
+                "gitlab_transport_failed method=%s path=%s duration_ms=%.1f error_type=%s",
+                request.method,
+                upstream_path,
+                (time.monotonic() - started) * 1000,
+                type(error).__name__,
+            )
+            raise
+        response_level = (
+            logging.ERROR
+            if response.code >= 500
+            else logging.WARNING
+            if response.code >= 400
+            else logging.DEBUG
+        )
+        logger.log(
+            response_level,
+            "gitlab_response method=%s path=%s status=%s duration_ms=%.1f attempt=%s",
+            request.method,
+            upstream_path,
+            response.code,
+            (time.monotonic() - started) * 1000,
+            attempt + 1,
+        )
         target = None
         if request.method == "GET" and response.code in (301, 302, 303, 307, 308):
             target = canonical_project_redirect(
@@ -106,6 +141,12 @@ def relay(upstream, read_body):
             )
         if target is None or target == upstream_request.full_url or attempt == 2:
             break
+        logger.info(
+            "gitlab_redirect_followed path=%s target=%s status=%s",
+            upstream_path,
+            safe_log_value(urllib.parse.urlsplit(target).path),
+            response.code,
+        )
         response.close()
         upstream_request = urllib.request.Request(
             target,
@@ -116,4 +157,28 @@ def relay(upstream, read_body):
         data = response.read(64 * 1024 * 1024 + 1)
         if len(data) > 64 * 1024 * 1024:
             return jsonify(error="Upstream response too large"), 502
-        return Response(data, status=response.code, content_type="application/json")
+        relayed = Response(data, status=response.code, content_type="application/json")
+        if response.code in (301, 302, 303, 307, 308):
+            try:
+                location = urllib.parse.urlsplit(response.headers.get("Location", ""))
+                target = urllib.parse.urlunsplit(
+                    (
+                        location.scheme,
+                        location.netloc.rsplit("@", 1)[-1],
+                        location.path,
+                        "",
+                        "",
+                    )
+                )
+                target = "".join(c if c.isprintable() else "?" for c in target)[:2048]
+            except ValueError:
+                target = "[invalid redirect destination]"
+            logger.warning(
+                "gitlab_redirect_refused status=%s path=%s target=%s",
+                response.code,
+                safe_log_value(endpoint.split("?", 1)[0]),
+                target or "[missing Location header]",
+            )
+            if target:
+                relayed.headers["X-Aux-Upstream-Redirect"] = target
+        return relayed

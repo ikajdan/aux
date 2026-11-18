@@ -1,9 +1,10 @@
 {
   "gitlabUrl": "https://gitlab.com",
   "repositoryGroups": [{ "name": "Documents", "path": "example/documents" }],
+  "templateRepository": "example/template",
   "maxConcurrentBuilds": 6,
   "mainDocument": "main.tex",
-  "templateRepository": "example/template",
+  "logLevel": "INFO",
   "limits": {
     "requestBytes": 41943040,
     "snapshotBytes": 31457280,

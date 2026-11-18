@@ -68,12 +68,13 @@ def load_config(path=None):
                 "repositoryGroups",
                 "limits",
                 "maxConcurrentBuilds",
+                "logLevel",
                 "mainDocument",
                 "templateRepository",
             }
         ):
             raise ValueError(
-                "expected gitlabUrl, exactly one of repositoryGroups or legacy repositoryGroup, and optional limits, maxConcurrentBuilds, mainDocument, and templateRepository"
+                "expected gitlabUrl, exactly one of repositoryGroups or legacy repositoryGroup, and optional limits, maxConcurrentBuilds, logLevel, mainDocument, and templateRepository"
             )
         url = config["gitlabUrl"]
         if (
@@ -139,6 +140,19 @@ def load_config(path=None):
                 "templateRepository must be empty or a safe GitLab namespace/project path"
             )
 
+        log_level = config.get("logLevel", "INFO")
+        if not isinstance(log_level, str) or log_level.upper() not in {
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        }:
+            raise ValueError(
+                "logLevel must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )
+        log_level = log_level.upper()
+
         max_concurrent_builds = config.get("maxConcurrentBuilds", 6)
         if (
             type(max_concurrent_builds) is not int
@@ -178,6 +192,7 @@ def load_config(path=None):
             "repositoryGroups": groups,
             "limits": effective_limits,
             "maxConcurrentBuilds": max_concurrent_builds,
+            "logLevel": log_level,
             "mainDocument": main_document,
             "templateRepository": template_repository,
         }

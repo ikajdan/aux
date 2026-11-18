@@ -52,11 +52,12 @@ class ConfigTests(unittest.TestCase):
             "gitlabUrl": "https://gitlab.example/team",
             "limits": self.config["limits"],
             "maxConcurrentBuilds": 6,
+            "logLevel": "INFO",
             "mainDocument": "main.tex",
             "templateRepository": "",
         }
         self.assertEqual(
-            json.loads(result.stdout),
+            json.loads(result.stdout.splitlines()[-1]),
             [200, expected, "no-store", "https://gitlab.example/team/api/v4/"],
         )
 
@@ -164,6 +165,7 @@ class ConfigTests(unittest.TestCase):
                 "repositoryGroups",
                 "limits",
                 "maxConcurrentBuilds",
+                "logLevel",
                 "mainDocument",
                 "templateRepository",
             },
@@ -296,7 +298,7 @@ class ConfigTests(unittest.TestCase):
             timeout=10,
             check=True,
         )
-        self.assertEqual(json.loads(result.stdout), [main, main])
+        self.assertEqual(json.loads(result.stdout.splitlines()[-1]), [main, main])
 
     def test_invalid_concurrent_build_counts(self):
         for value in (None, True, False, "6", 1.5, 0, -1, [], {}, 9007199254740992):
@@ -332,7 +334,7 @@ print(json.dumps([capacity, acquired]))
                     check=True,
                 )
                 self.assertEqual(
-                    json.loads(result.stdout), [expected, [True] * expected + [False]]
+                    json.loads(result.stdout.splitlines()[-1]), [expected, [True] * expected + [False]]
                 )
 
     def test_invalid_limits(self):
@@ -377,7 +379,7 @@ with patch.object(compilation.subprocess, "Popen") as process:
             timeout=10,
             check=True,
         )
-        limit, flask_limit, responses, calls = json.loads(result.stdout)
+        limit, flask_limit, responses, calls = json.loads(result.stdout.splitlines()[-1])
         self.assertEqual((limit, flask_limit, calls), (128, 128, 0))
         self.assertEqual([r[0] for r in responses], [400, 400, 400])
         self.assertIn("128 bytes", responses[0][1]["error"])

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import base64
+import logging
 import os
 import signal
 import subprocess
@@ -12,6 +13,8 @@ from pathlib import Path, PurePosixPath
 
 from .process_limits import limits
 from .validation import build_id, safe_path
+
+logger = logging.getLogger(__name__)
 
 
 class BuildCanceled(Exception):
@@ -34,6 +37,8 @@ class CompilationService:
         self.max_build_ids = 1024
 
     def compile(self, data):
+        started = time.monotonic()
+        key = None
         job = None
         if isinstance(data, dict) and "buildId" in data:
             key = build_id(data)
@@ -41,8 +46,14 @@ class CompilationService:
                 self.prune_builds()
                 if key in self.builds:
                     check_canceled(self.builds[key])
+                    logger.warning(
+                        "Build rejected build_id=%s reason=duplicate_id", key
+                    )
                     return 409, {"error": "buildId already used"}
                 if len(self.builds) >= self.max_build_ids:
+                    logger.warning(
+                        "Build rejected build_id=%s reason=registry_full", key
+                    )
                     return 503, {"error": "Build registry full. Retry shortly"}
                 job = {"event": threading.Event(), "active": True, "expires": 0}
                 self.builds[key] = job
@@ -51,13 +62,54 @@ class CompilationService:
             check_canceled(job)
             acquired = self.slots.acquire(blocking=False)
             if not acquired:
+                logger.warning("Build rejected build_id=%s reason=capacity", key)
                 return 429, {"error": "Compiler busy. Retry shortly"}
+            logger.info("Build started build_id=%s", key)
             status, result = self.compile_document(data, job)
             with self.cancel_lock:
                 check_canceled(job)
                 if job is not None:
                     self.finish_build(job)
+            elapsed = time.monotonic() - started
+            if status == 200:
+                logger.info(
+                    "Build succeeded build_id=%s duration_seconds=%.3f", key, elapsed
+                )
+            elif result.get("error") == "Compilation timed out (110 seconds)":
+                logger.warning(
+                    "Build timed out build_id=%s duration_seconds=%.3f", key, elapsed
+                )
+            else:
+                logger.warning(
+                    "Build failed build_id=%s status=%s duration_seconds=%.3f",
+                    key,
+                    status,
+                    elapsed,
+                )
             return status, result
+        except BuildCanceled:
+            logger.info(
+                "Build canceled build_id=%s duration_seconds=%.3f",
+                key,
+                time.monotonic() - started,
+            )
+            raise
+        except (ValueError, KeyError, TypeError):
+            logger.warning(
+                "Build rejected build_id=%s duration_seconds=%.3f",
+                key,
+                time.monotonic() - started,
+            )
+            raise
+        except Exception as error:
+            # Exception messages and tracebacks may expose document data or paths.
+            logger.error(
+                "Build internal failure build_id=%s duration_seconds=%.3f error_type=%s",
+                key,
+                time.monotonic() - started,
+                type(error).__name__,
+            )
+            raise
         finally:
             if acquired:
                 self.slots.release()
@@ -82,6 +134,7 @@ class CompilationService:
                 }
             elif job["active"]:
                 job["event"].set()
+        logger.info("Build cancellation requested build_id=%s", key)
         return 200, {"status": "cancel_requested"}
 
     def prune_builds(self):

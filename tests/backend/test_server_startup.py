@@ -59,7 +59,7 @@ with patch('waitress.serve') as serve, patch('threading.Thread') as thread:
                         check=True,
                     )
                     self.assertEqual(
-                        json.loads(result.stdout),
+                        json.loads(result.stdout.splitlines()[-1]),
                         [200, {"ok": True}, "docs/report.tex"],
                     )
 
