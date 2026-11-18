@@ -21,7 +21,7 @@ class RelayTests(unittest.TestCase):
                 ("GET", "/api/users?username=foo"),
                 ("GET", "/api/users/42/projects?page=2"),
                 ("POST", "/api/projects/1"),
-                ("POST", "/api/projects"),
+                ("POST", "/api/projects/12/fork"),
             ):
                 with self.subTest(method=method):
                     response = self.client.open(path, method=method, json={})
@@ -63,17 +63,15 @@ class RelayTests(unittest.TestCase):
                     outbound.get_header("Content-type"), "application/json"
                 )
 
-    def test_project_creation_forwards_json_and_pat_intact(self):
-        payload = (
-            b'{"name":"New project","namespace_id":42,"initialize_with_readme":true}'
-        )
+    def test_project_fork_forwards_json_and_pat_intact(self):
+        payload = b'{"name":"New project","namespace_id":42,"visibility":"private"}'
         with patch.object(gitlab_proxy.urllib.request, "build_opener") as build_opener:
             upstream = build_opener.return_value.open.return_value
             upstream.__enter__.return_value = upstream
             upstream.code = 201
             upstream.read.return_value = b'{"id":123}'
             response = self.client.post(
-                "/api/projects",
+                "/api/projects/12/fork",
                 data=payload,
                 content_type="application/json",
                 headers={"PRIVATE-TOKEN": "test-pat"},
@@ -82,7 +80,7 @@ class RelayTests(unittest.TestCase):
             self.assertEqual(response.get_json(), {"id": 123})
             build_opener.return_value.open.assert_called_once()
             outbound = build_opener.return_value.open.call_args.args[0]
-            self.assertEqual(outbound.full_url, self.upstream + "projects")
+            self.assertEqual(outbound.full_url, self.upstream + "projects/12/fork")
             self.assertEqual(outbound.get_method(), "POST")
             self.assertEqual(outbound.data, payload)
             self.assertEqual(outbound.get_header("Private-token"), "test-pat")

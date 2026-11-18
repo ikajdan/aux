@@ -21,7 +21,7 @@ const bundled = await build({
             ? `export function createSelect(element) { return { setValue(value) { element.value = value; }, rebuild() {}, sync() {} }; }`
             : path.endsWith("modal-dialogs.js")
               ? `export async function promptDialog() { throw new Error("Unexpected namespace prompt"); } export function restoreFocus(button) { button.focus(); }`
-              : `export function prepareTemplateProject(...args) { return globalThis.__newProjectPrepare(...args); }`,
+              : `export function prepareTemplateProject(...args) { return globalThis.__newProjectPrepare(...args); } export function waitForTemplateProject(...args) { return globalThis.__newProjectWait(...args); }`,
         }));
       },
     },
@@ -32,9 +32,9 @@ const { initializeNewProject } = await import(`data:text/javascript;base64,${Buf
 const template = {
   visibility: "internal",
   branch: "documents",
-  commit: { branch: "documents", commit_message: "Initial template", actions: [{ action: "create", file_path: "main.tex", content: "template" }] },
+  id: 42,
 };
-const remoteProject = { id: 73, path_with_namespace: "team/docs/new-document" };
+const remoteProject = { id: 73, path_with_namespace: "team/docs/new-document", default_branch: "documents", empty_repo: false };
 
 function deferred() {
   let resolve;
@@ -86,7 +86,7 @@ function element() {
   };
 }
 
-function harness(t, steps, prepare = async () => structuredClone(template)) {
+function harness(t, steps, prepare = async () => structuredClone(template), wait = async () => structuredClone(remoteProject)) {
   const ids = [
     "new-project",
     "new-project-card",
@@ -109,6 +109,7 @@ function harness(t, steps, prepare = async () => structuredClone(template)) {
   };
   const previousDocument = globalThis.document;
   const previousPrepare = globalThis.__newProjectPrepare;
+  const previousWait = globalThis.__newProjectWait;
   globalThis.document = { getElementById: get, createElement: () => element() };
   const calls = [],
     unexpected = [],
@@ -118,6 +119,12 @@ function harness(t, steps, prepare = async () => structuredClone(template)) {
   globalThis.__newProjectPrepare = async (...args) => {
     events.push("prepare");
     return prepare(...args);
+  };
+  globalThis.__newProjectWait = async (...args) => {
+    events.push("wait");
+    assert.equal(args[0], api);
+    assert.equal(args[1], remoteProject.id);
+    return wait(...args);
   };
   const api = {
     async request(endpoint, payload) {
@@ -135,6 +142,7 @@ function harness(t, steps, prepare = async () => structuredClone(template)) {
   t.after(() => {
     globalThis.document = previousDocument;
     globalThis.__newProjectPrepare = previousPrepare;
+    globalThis.__newProjectWait = previousWait;
     assert.deepEqual(unexpected, [], "unexpected API requests must not be swallowed by UI error handling");
     assert.equal(steps.length, 0, "all expected API requests were made");
   });
@@ -173,56 +181,47 @@ function harness(t, steps, prepare = async () => structuredClone(template)) {
   };
 }
 const user = () => ({ endpoint: "user", result: { username: "alice" } });
-const create = () => ({ endpoint: "projects", result: { ...remoteProject } });
-const commitEndpoint = "projects/73/repository/commits";
+const forkEndpoint = "projects/42/fork";
+const create = () => ({ endpoint: forkEndpoint, result: { ...remoteProject } });
 
-test("creation inherits template visibility and destination, seeds once before persistence and refresh, without forking", async (t) => {
-  const commit = deferred();
+test("creation forks with template visibility and destination, persists before waiting and refreshes only when ready", async (t) => {
+  const ready = deferred();
   const started = deferred();
   const h = harness(
     t,
-    [user(), { endpoint: "groups/team%2Fdocs", result: { id: 42 } }, create(), { endpoint: commitEndpoint, result: commit.promise }],
+    [user(), { endpoint: "groups/team%2Fdocs", result: { id: 42 } }, create()],
+    undefined,
     async () => {
       started.resolve();
-      return structuredClone(template);
+      return ready.promise;
     },
   );
   await h.open();
   h.fill("team/docs");
   const submission = h.submit();
   await started.promise;
-  // Let the resolved preparation and group lookup reach the pending commit.
-  for (let turn = 0; turn < 20 && !h.calls.some((call) => call.endpoint === commitEndpoint); turn++) await Promise.resolve();
-  assert.deepEqual(h.events, ["user", "prepare", "groups/team%2Fdocs", "projects", commitEndpoint]);
-  assert.deepEqual(h.persisted, []);
+  assert.deepEqual(h.events, ["user", "prepare", "groups/team%2Fdocs", forkEndpoint, "persist", "wait"]);
+  assert.deepEqual(h.persisted, [remoteProject]);
   assert.equal(h.get("create-project").disabled, true);
   await h.submit();
-  assert.deepEqual(h.calls.find((call) => call.endpoint === "projects").payload, {
+  assert.deepEqual(h.calls.find((call) => call.endpoint === forkEndpoint).payload, {
     name: "New document",
     path: "new-document",
     visibility: "internal",
-    default_branch: "documents",
-    initialize_with_readme: false,
     namespace_id: 42,
   });
-  assert.deepEqual(h.calls.find((call) => call.endpoint === commitEndpoint).payload, template.commit);
-  commit.resolve({ id: "initial-commit" });
+  ready.resolve({ ...remoteProject });
   await submission;
-  assert.deepEqual(h.events, ["user", "prepare", "groups/team%2Fdocs", "projects", commitEndpoint, "persist", "refresh"]);
-  assert.deepEqual(h.persisted, [{ ...remoteProject, default_branch: "documents" }]);
+  assert.deepEqual(h.events, ["user", "prepare", "groups/team%2Fdocs", forkEndpoint, "persist", "wait", "refresh"]);
   assert.equal(h.get("new-project-result").href, "https://gitlab.example/team/docs/new-document");
   assert.equal(h.get("new-project-result").hidden, false);
   await h.submit();
-  assert.equal(h.calls.filter((call) => call.endpoint === commitEndpoint).length, 1);
-  assert.equal(
-    h.calls.some((call) => /fork/.test(call.endpoint)),
-    false,
-  );
+  assert.equal(h.calls.filter((call) => call.endpoint === forkEndpoint).length, 1);
 });
 
 test("failed template preparation never creates a remote project", async (t) => {
   const h = harness(t, [user()], async () => {
-    throw new Error("Template download failed");
+    throw new Error("Template lookup failed");
   });
   await h.open();
   h.fill("team/docs");
@@ -231,28 +230,46 @@ test("failed template preparation never creates a remote project", async (t) => 
     h.calls.map((call) => call.endpoint),
     ["user"],
   );
-  assert.match(h.get("new-project-status").textContent, /Template download failed/);
+  assert.match(h.get("new-project-status").textContent, /Template lookup failed/);
   assert.equal(h.get("create-project").disabled, false);
   assert.equal(h.get("new-project-result").hidden, true);
   assert.deepEqual(h.persisted, []);
   assert.equal(h.events.includes("refresh"), false);
 });
 
-test("failed seeding retains the created link, blocks duplicate submission and does not signal readiness", async (t) => {
-  const h = harness(t, [user(), create(), { endpoint: commitEndpoint, error: new Error("Commit rejected") }]);
+test("failed readiness wait retains the created link, blocks duplicate submission and does not signal readiness", async (t) => {
+  const h = harness(t, [user(), create()], undefined, async () => {
+    throw new Error("Fork import rejected");
+  });
   await h.open();
   h.fill();
   await h.submit();
   assert.equal(h.get("new-project-result").hidden, false);
   assert.equal(h.get("new-project-result").href, "https://gitlab.example/team/docs/new-document");
-  assert.match(h.get("new-project-status").textContent, /project was created, but setup could not finish.*Commit rejected/);
+  assert.match(h.get("new-project-status").textContent, /project was created, but setup could not finish.*Fork import rejected/);
   assert.equal(h.get("create-project").disabled, true);
   const calls = h.calls.length;
   await h.submit();
   assert.equal(h.calls.length, calls);
-  assert.deepEqual(h.persisted, []);
+  assert.deepEqual(h.persisted, [remoteProject]);
   assert.equal(h.events.includes("refresh"), false);
   assert.equal(h.calls[1].payload.namespace_id, undefined);
+});
+
+test("pending fork retains its link and persistence without refresh or retry", async (t) => {
+  const h = harness(t, [user(), create()], undefined, async () => null);
+  await h.open();
+  h.fill();
+  await h.submit();
+  assert.deepEqual(h.events, ["user", "prepare", forkEndpoint, "persist", "wait"]);
+  assert.deepEqual(h.persisted, [remoteProject]);
+  assert.equal(h.get("new-project-result").hidden, false);
+  assert.equal(h.get("new-project-result").href, "https://gitlab.example/team/docs/new-document");
+  assert.match(h.get("new-project-status").textContent, /pending|still|progress/i);
+  assert.equal(h.get("create-project").disabled, true);
+  assert.equal(h.calls[1].payload.namespace_id, undefined);
+  await h.submit();
+  assert.equal(h.calls.length, 2);
 });
 
 for (const [label, error] of [
@@ -260,7 +277,7 @@ for (const [label, error] of [
   ["server failure", Object.assign(new Error("Gateway timeout"), { status: 504 })],
 ]) {
   test(`uncertain creation after ${label} exposes the predicted link and prevents retry`, async (t) => {
-    const h = harness(t, [user(), { endpoint: "projects", error }]);
+    const h = harness(t, [user(), { endpoint: forkEndpoint, error }]);
     await h.open();
     h.fill();
     await h.submit();
@@ -271,7 +288,7 @@ for (const [label, error] of [
     await h.submit();
     assert.deepEqual(
       h.calls.map((call) => call.endpoint),
-      ["user", "projects"],
+      ["user", forkEndpoint],
     );
     assert.deepEqual(h.persisted, []);
     assert.equal(h.events.includes("refresh"), false);

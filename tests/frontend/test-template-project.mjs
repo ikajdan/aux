@@ -7,7 +7,7 @@ import { build } from "esbuild";
 
 const result = await build({
   stdin: {
-    contents: 'export { prepareTemplateProject } from "./src/projects/template-project.ts"; export { configureGitLab } from "./src/gitlab-submodules.ts";',
+    contents: 'export { prepareTemplateProject, waitForTemplateProject } from "./src/projects/template-project.ts";',
     resolveDir: new URL("../../", import.meta.url).pathname,
   },
   bundle: true,
@@ -15,108 +15,85 @@ const result = await build({
   format: "esm",
   platform: "browser",
 });
-const { prepareTemplateProject, configureGitLab } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
-configureGitLab("https://gitlab.example");
+const { prepareTemplateProject, waitForTemplateProject } = await import(
+  `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`
+);
 
-const sha = "a".repeat(40);
-const childSHA = "b".repeat(40);
 const templatePath = "team/templates/latex";
-const limits = { snapshotBytes: 100000, snapshotFiles: 100, snapshotEntries: 200, submoduleDepth: 4, requestBytes: 200000 };
-const file = (path, content, mode = "100644") => ({ path, content: Buffer.from(content), mode });
+const metadataEndpoint = `projects/${encodeURIComponent(templatePath)}`;
+const metadata = { id: 42, default_branch: "release/template", visibility: "public" };
 
-function fixture(t, { files = [file("main.tex", "Document\n")], metadata = {}, extra = {}, configLimits = {} } = {}) {
-  const routes = new Map([
-    [`projects/${encodeURIComponent(templatePath)}`, { id: 42, default_branch: "release/template", visibility: "public", ...metadata }],
-    ["projects/42/repository/branches/release%2Ftemplate", { commit: { id: sha } }],
-    [`projects/42/repository/tree?recursive=true&ref=${sha}`, files.map(({ path, mode }, i) => ({ path, mode, id: `blob-${i}`, type: "blob" }))],
-    ...files.map(({ content }, i) => [`projects/42/repository/blobs/blob-${i}`, { content: content.toString("base64") }]),
-    ...Object.entries(extra),
-  ]);
+function fixture(t, responses, endpoint = metadataEndpoint) {
   const calls = [];
-  const failures = [];
-  const request = async (endpoint, body) => {
-    calls.push(endpoint);
-    if (body !== undefined || !routes.has(endpoint)) {
-      const error = new Error(`Unexpected API request: ${endpoint}`);
-      failures.push(error.message);
-      throw error;
-    }
-    const value = routes.get(endpoint);
-    if (value instanceof Error) throw value;
-    return structuredClone(value);
+  const unexpected = [];
+  const api = {
+    async request(...args) {
+      calls.push(args);
+      if (args[0] !== endpoint || args[1] !== undefined || responses.length === 0) {
+        unexpected.push(args);
+        throw new Error("Unexpected API request");
+      }
+      const response = responses.shift();
+      if (response instanceof Error) throw response;
+      return structuredClone(response);
+    },
   };
-  t.after(() => assert.deepEqual(failures, [], "Expected rejections must not hide unexpected API requests"));
-  return {
-    api: { request, pages: request },
-    config: { templateRepository: templatePath, limits: { ...limits, ...configLimits } },
-    calls,
-    routes,
-  };
-}
-const prepare = (f) => prepareTemplateProject(f.api, f.config, () => {});
-
-function copiedFiles(commit) {
-  return Object.fromEntries(commit.actions.filter((action) => action.action === "create").map((action) => {
-    assert.equal(action.encoding, "base64");
-    return [action.file_path, Buffer.from(action.content, action.encoding)];
-  }));
+  t.after(() => {
+    assert.deepEqual(unexpected, [], "Expected rejections must not hide unexpected API requests");
+    assert.equal(responses.length, 0);
+  });
+  return { api, calls, config: { templateRepository: templatePath } };
 }
 
-test("template preparation pins the default branch and preserves binary files and executable mode in one initial commit", async (t) => {
-  const binary = Buffer.from([0, 255, 128, 13, 10, 42]);
-  const script = "#!/bin/sh\nprintf test\n";
-  const f = fixture(t, { files: [file("main.tex", "Document\n"), file("figure.png", binary), file("build.sh", script, "100755")] });
-  const prepared = await prepare(f);
-  assert.equal(prepared.branch, "release/template");
-  assert.equal(prepared.visibility, "public");
-  assert.equal(prepared.commit.branch, "release/template");
-  assert.deepEqual(copiedFiles(prepared.commit), { "main.tex": Buffer.from("Document\n"), "figure.png": binary, "build.sh": Buffer.from(script) });
-  assert.deepEqual(prepared.commit.actions.filter((action) => action.action === "chmod"), [{ action: "chmod", file_path: "build.sh", execute_filemode: true }]);
-  assert.ok(f.calls.includes(`projects/42/repository/tree?recursive=true&ref=${sha}`));
-  assert.equal(prepared.commit.actions.length, 4);
-});
-
-test("template visibility is inherited rather than hardcoded to private", async (t) => {
+test("template preparation reads only encoded project metadata and preserves visibility", async (t) => {
   for (const visibility of ["private", "internal", "public"]) {
-    const f = fixture(t, { metadata: { visibility } });
-    assert.equal((await prepare(f)).visibility, visibility);
+    const f = fixture(t, [{ ...metadata, visibility }]);
+    assert.deepEqual(await prepareTemplateProject(f.api, f.config), { id: 42, branch: "release/template", visibility });
+    assert.deepEqual(
+      f.calls.map(([endpoint]) => endpoint),
+      [metadataEndpoint],
+    );
   }
 });
 
-test("submodules and symlinks become self-contained files without obsolete submodule mappings", async (t) => {
-  const f = fixture(t, {
-    files: [file(".gitmodules", '[submodule "lib"]\n path = vendor/lib\n url = https://gitlab.example/team/shared.git\n'), file("main.tex", "vendor/lib/shared.tex", "120000")],
-    extra: {
-      [`projects/team%2Fshared/repository/tree?recursive=true&ref=${childSHA}`]: [{ path: "shared.tex", id: "shared", type: "blob", mode: "100644" }],
-      "projects/team%2Fshared/repository/blobs/shared": { content: Buffer.from("Shared source\n").toString("base64") },
-    },
-  });
-  f.routes.get(`projects/42/repository/tree?recursive=true&ref=${sha}`).push({ path: "vendor/lib", id: childSHA, type: "commit", mode: "160000" });
-  const { commit } = await prepare(f);
-  assert.deepEqual(copiedFiles(commit), { "main.tex": Buffer.from("Shared source\n"), "vendor/lib/shared.tex": Buffer.from("Shared source\n") });
-  assert.ok(commit.actions.every((action) => action.action === "create"));
-});
-
-test("unreadable or unusable templates fail before preparing a destination", async (t) => {
-  const denied = fixture(t);
+test("template preparation propagates access errors and rejects invalid metadata", async (t) => {
   const error = Object.assign(new Error("Template not accessible"), { status: 404 });
-  denied.routes.set(`projects/${encodeURIComponent(templatePath)}`, error);
-  await assert.rejects(prepare(denied), (value) => value === error);
-  assert.equal(denied.calls.length, 1);
-
-  for (const [metadata, message] of [[{ default_branch: null }, /no default branch/], [{ visibility: "unknown" }, /visibility/]]) {
-    const f = fixture(t, { metadata });
-    await assert.rejects(prepare(f), message);
+  const denied = fixture(t, [error]);
+  await assert.rejects(prepareTemplateProject(denied.api, denied.config), (value) => value === error);
+  for (const patch of [
+    ...[undefined, null, 0, -1, 1.5, "42"].map((id) => ({ id })),
+    ...[undefined, null, ""].map((default_branch) => ({ default_branch })),
+    ...[undefined, null, "", "unknown"].map((visibility) => ({ visibility })),
+  ]) {
+    const f = fixture(t, [{ ...metadata, ...patch }]);
+    await assert.rejects(prepareTemplateProject(f.api, f.config));
     assert.equal(f.calls.length, 1);
   }
-  await assert.rejects(prepare(fixture(t, { files: [] })), /no files to copy/);
 });
 
-test("unsafe symlinks and configured size limits reject the template before creation", async (t) => {
-  const unsafe = fixture(t, { files: [file("main.tex", "/etc/passwd", "120000")] });
-  await assert.rejects(prepare(unsafe), /Cannot materialize.*main\.tex/);
-  for (const configLimits of [{ snapshotFiles: 1 }, { snapshotBytes: 1 }, { requestBytes: 1 }]) {
-    const f = fixture(t, { files: [file("main.tex", "Document\n"), file("notes.txt", "Notes\n")], configLimits });
-    await assert.rejects(prepare(f), /limit|exceeds/i);
+test("polling returns a populated project only for absent, none or finished import status", async (t) => {
+  for (const import_status of [undefined, "none", "finished"]) {
+    const project = { ...metadata, empty_repo: false, import_status };
+    const f = fixture(t, [project], "projects/42");
+    assert.deepEqual(await waitForTemplateProject(f.api, 42, 0), project);
+    assert.equal(f.calls.length, 1);
   }
+});
+
+test("polling always checks once at timeout zero but does not accept pending or empty projects", async (t) => {
+  for (const patch of [{ import_status: "pending" }, { import_status: "started" }, { empty_repo: true }, { default_branch: null }, { default_branch: "" }]) {
+    const f = fixture(t, [{ ...metadata, empty_repo: false, import_status: "finished", ...patch }], "projects/42");
+    assert.equal(await waitForTemplateProject(f.api, 42, 0), null);
+    assert.equal(f.calls.length, 1);
+  }
+});
+
+test("polling reports import failure with its detail or a generic error", async (t) => {
+  for (const import_error of ["Fork import rejected", undefined]) {
+    const f = fixture(t, [{ ...metadata, empty_repo: false, import_status: "failed", import_error }], "projects/42");
+    await assert.rejects(waitForTemplateProject(f.api, 42, 0), import_error ? /Fork import rejected/ : /fail/i);
+  }
+  const error = new Error("Project lookup failed");
+  const f = fixture(t, [error], "projects/42");
+  await assert.rejects(waitForTemplateProject(f.api, 42, 0), (value) => value === error);
 });

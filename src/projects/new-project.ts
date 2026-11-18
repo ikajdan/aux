@@ -6,7 +6,7 @@ import type { GitLabAPI } from "../gitlab-sync.js";
 import type { ServerConfig } from "../server-config.js";
 import { createSelect } from "../select-control.js";
 import { promptDialog, restoreFocus } from "../modal-dialogs.js";
-import { prepareTemplateProject } from "./template-project.js";
+import { prepareTemplateProject, waitForTemplateProject } from "./template-project.js";
 
 export function initializeNewProject({
   api,
@@ -211,32 +211,31 @@ export function initializeNewProject({
     feedback.textContent = "Reading template…";
     let creationRequested = false;
     try {
-      const template = await prepareTemplateProject(api, config, (progress) => {
-        feedback.textContent = progress.phase === "downloading" ? `Reading template… (${progress.files} files)` : "Reading template…";
-      });
+      const template = await prepareTemplateProject(api, config);
       const destination = namespace.value ? await api.request<{ id: number }>(`groups/${encodeURIComponent(namespace.value)}`) : null;
       const destinationPath = namespace.value || (await getUser()).username;
       resultLink.href = projectURL(`${destinationPath}/${path.value}`);
       feedback.textContent = "Creating project…";
       creationRequested = true;
-      created = await api.request<ApplicationProject>("projects", {
+      created = await api.request<ApplicationProject>(`projects/${template.id}/fork`, {
         name: name.value,
         path: path.value,
         visibility: template.visibility,
-        default_branch: template.branch,
-        initialize_with_readme: false,
         ...(destination ? { namespace_id: destination.id } : {}),
       });
       if (!created?.id || !created.path_with_namespace) throw new Error("GitLab returned an incomplete project response. Check GitLab before trying again.");
       resultLink.href = projectURL(created.path_with_namespace);
       resultLink.hidden = false;
       submit.textContent = "Project created";
-      feedback.textContent = "Copying template files…";
-      await api.request(`projects/${encodeURIComponent(created.id)}/repository/commits`, template.commit);
-      created.default_branch = template.branch;
       onCreated(created);
-      await onReady();
-      feedback.textContent = "Project created and added to Documents.";
+      feedback.textContent = "Waiting for GitLab to prepare the repository…";
+      const ready = await waitForTemplateProject(api, created.id);
+      if (ready) {
+        await onReady();
+        feedback.textContent = "Project created and added to Documents.";
+      } else {
+        feedback.textContent = "Project created. GitLab is still preparing the repository. Refresh Documents once it is ready.";
+      }
     } catch (error) {
       uncertain = creationRequested && !created && (!error.status || error.status >= 500);
       if (uncertain) {

@@ -41,7 +41,7 @@ Edit `server/config.json` before starting:
 
 - `gitlabUrl`: GitLab instance URL.
 - `repositoryGroups`: dashboard groups, each with a display `name` and GitLab group `path`. Replace `example/documents` with the GitLab group path.
-- `templateRepository`: optional namespace/project path on the configured instance, for example `templates/latex-document`. New document button copies the template's default-branch files into an independent project with one initial commit and the same visibility.
+- `templateRepository`: optional namespace/project path on the configured instance, used as the template for new document forks.
 - `maxConcurrentBuilds`: maximum simultaneous PDF builds (defaults to `6`).
 - `mainDocument`: project-relative `.tex` file to compile and open initially (defaults to `main.tex`).
 - `logLevel`: optional server logging level (defaults to `INFO`). Accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`

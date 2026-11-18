@@ -68,7 +68,7 @@ def relay(upstream, read_body):
     if (
         not (
             decoded.startswith(("projects/", "groups/"))
-            or (decoded == "projects" and request.method == "POST")
+
             or (endpoint == "user" and request.method == "GET")
             or (
                 request.method == "GET"
