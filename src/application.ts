@@ -899,6 +899,20 @@ function button(text: string, action: Operation, iconName: IconName = "file", qu
   b.onclick = () => run(action, text, quiet, false, options);
   return b;
 }
+const backgroundActions = new Set<string>();
+async function runBackground(action: Operation, label: string, key: string) {
+  if (backgroundActions.has(key)) return;
+  backgroundActions.add(key);
+  try {
+    await action();
+  } catch (e) {
+    console.error(e);
+    const detail = e.name === "TimeoutError" ? "Request timed out. Check the connection and try again." : e.message || String(e);
+    status(`${label} failed: ${detail}`, "error");
+  } finally {
+    backgroundActions.delete(key);
+  }
+}
 async function run(
   action: Operation,
   label = "Operation",
@@ -1918,7 +1932,6 @@ async function refreshRemoteBranches() {
   if (!project) throw new Error("Open a project first.");
   const activeProject = project;
   const token = $("token").value;
-  const selected = $("branches").value;
   const refresh = $("refresh-branches");
   refresh.dataset.loading = "true";
   refresh.setAttribute("aria-busy", "true");
@@ -1934,6 +1947,7 @@ async function refreshRemoteBranches() {
     );
     updateTargetBranches();
     const names = [...new Set([...remote.map((branch) => branch.name), ...local])];
+    const selected = $("branches").value;
     setSidebarBranches(names);
     branchSelect.setValue(names.includes(selected) ? selected : names.includes(meta?.branch) ? meta.branch : names[0] || "");
     status("Branches refreshed.", "ready");
@@ -2753,6 +2767,7 @@ for (const [id, action] of Object.entries({
   if (id === "rename" || id === "delete") continue;
   $(id).onclick = () => {
     const label = $(id).getAttribute("aria-label") || $(id).textContent.trim() || $(id).title;
+    if (["repositories", "refresh-branches", "copy-logs", "download-pdf"].includes(id)) return runBackground(action, label, id);
     if (id in getFileActions()) return invokeFileAction(id, label);
     return run(action, label, false, id === "repositories", { initialProgress: id !== "force-pull" && id !== "push", transient: id === "discard-file" });
   };
