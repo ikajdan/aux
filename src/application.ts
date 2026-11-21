@@ -1594,11 +1594,8 @@ function renderTree(paths: string[], directories: string[] = []) {
           label.textContent = "(submodule)";
           folderName.append(document.createTextNode(" "), label);
         }
-        summary.onclick = (event) => {
-          if (busy) {
-            event.preventDefault();
-            return;
-          }
+        summary.onclick = () => {
+          if (busy) return;
           selectedTreePath = summary.dataset.path;
           syncTree();
         };
