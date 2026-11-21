@@ -58,7 +58,7 @@
 }
 #home img {
     display: block;
-    height: var(--brand-copy-height);
+    height: 36px;
     width: auto;
     max-height: var(--brand-copy-height);
     max-width: 110px;
