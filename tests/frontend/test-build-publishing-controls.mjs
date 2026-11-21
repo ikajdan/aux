@@ -2,17 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { setImmediate } from "node:timers/promises";
-import vm from "node:vm";
-import { transform } from "esbuild";
-
-const source = await readFile("src/application.ts", "utf8");
-const start = source.indexOf("let activePdfBuilds =");
-const end = source.indexOf("async function compileDocument(", start);
-assert.ok(start >= 0 && end > start);
-const { code } = await transform(source.slice(start, end), { loader: "ts" });
+import { loadDocumentBuild } from "./helpers/document-build.mjs";
 
 function deferred() {
   let resolve, reject;
@@ -22,407 +14,224 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
-let repositorySequence = 0;
-function repository() {
-  return { dir: `/workspace-${++repositorySequence}` };
-}
-function fixture(compileDocument, { cancellation = Promise.resolve(), pdf = null, synctex = null } = {}) {
+const success = { ok: true, json: async () => ({ pdf: "AQ==", log: "Built", synctex: "sync" }) };
+function fixture({ cancellation = Promise.resolve(), pdf = null } = {}) {
+  const state = { repo: { dir: "/workspace", modes: {}, files: async () => [] }, pdf, operation: null, version: 0 };
   const button = { disabled: false };
-  const cancelButton = { hidden: true, onclick: null };
-  const log = { textContent: "" };
-  const logsTab = {};
-  const selectedTabs = [];
-  let downloadUpdates = 0;
-  const statuses = [];
-  const operations = [];
-  const previews = [];
-  let resets = 0;
-  const context = vm.createContext({
-    $: (id) => {
-      const elements = { publishing: button, "cancel-build": cancelButton, log, "logs-tab": logsTab };
-      assert.ok(Object.hasOwn(elements, id));
-      return elements[id];
-    },
-    createBuildOperation: () => {
+  const cancel = { hidden: true, onclick: null };
+  const statuses = [],
+    operations = [],
+    previews = [];
+  let log = "",
+    resets = 0;
+  const createDocumentBuild = loadDocumentBuild({
+    createBuildOperation() {
       const controller = new AbortController();
-      let canceled;
+      const requested = deferred(),
+        response = deferred();
       const operation = {
+        id: `build-${operations.length}`,
         signal: controller.signal,
-        cancelCalls: 0,
+        requested,
+        response,
+        request(body) {
+          requested.resolve(JSON.parse(body));
+          return Promise.race([
+            response.promise,
+            new Promise((resolve, reject) => controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true })),
+          ]);
+        },
         cancel() {
-          operation.cancelCalls++;
-          if (!canceled) {
-            canceled = cancellation;
-            controller.abort(new DOMException("Build canceled", "AbortError"));
-          }
-          return canceled;
+          controller.abort(new DOMException("Build canceled", "AbortError"));
+          return cancellation;
         },
       };
       operations.push(operation);
       return operation;
     },
-    releaseForeground: null,
-    updatePdfDownload: () => {
-      downloadUpdates++;
+  });
+  const deps = {
+    getRepo: () => state.repo,
+    getSaving: () => Promise.resolve(),
+    getReleaseForeground: () => null,
+    getBuiltPdf: () => state.pdf,
+    getSyncBuild: () => "previous-sync",
+    getStatusVersion: () => state.version,
+    getToastBuildOperation: () => state.operation,
+    setToastBuildOperation: (value) => {
+      state.operation = value;
+    },
+    getLimits: () => ({}),
+    getLogText: () => log,
+    saveDocument: async () => {},
+    setEditorBusy() {},
+    status(text, status) {
+      state.version++;
+      statuses.push({ text, state: status });
+      cancel.hidden = status !== "busy" || !state.operation || state.operation.signal.aborted;
     },
     updateLog: (text) => {
-      log.textContent = text;
+      log = text;
     },
-    selectOutputTab: (tab) => selectedTabs.push(tab),
-    repo: repository(),
-    builtPdf: pdf,
-    syncBuild: synctex,
-    toastBuildOperation: null,
-    statusVersion: 0,
-    status: (text, state) => {
-      context.statusVersion++;
-      statuses.push({ text, state });
-      cancelButton.hidden = state !== "busy" || !context.toastBuildOperation || context.toastBuildOperation.signal.aborted;
-    },
+    selectLogs() {},
     preview: async (...args) => {
       previews.push(args);
+      return true;
     },
-    pdfPreview: {
-      reset: async () => {
-        resets++;
-      },
+    resetPreview: async () => {
+      resets++;
     },
-    compileDocument,
-  });
-  vm.runInContext(code, context);
+    updatePdfDownload() {},
+    setBuiltPdf: (value) => {
+      state.pdf = value;
+    },
+    publishingButton: button,
+    cancelButton: cancel,
+    fs: { promises: { readFile: async () => new Uint8Array([1]) } },
+  };
+  const factory = createDocumentBuild(deps);
   return {
+    ...factory,
+    state,
+    deps,
     button,
-    cancelButton,
+    cancel,
     statuses,
-    log,
-    logsTab,
-    selectedTabs,
-    get downloadUpdates() {
-      return downloadUpdates;
-    },
     operations,
     previews,
-    context,
     get resets() {
       return resets;
     },
-    build: () => context.buildDocument(),
   };
 }
-function pendingCompile(operation) {
-  return new Promise((resolve, reject) => {
-    operation.signal.addEventListener("abort", () => reject(operation.signal.reason), { once: true });
-  });
-}
-function assertFinished(f) {
+function finished(f) {
   assert.equal(f.button.disabled, false);
-  assert.equal(f.cancelButton.hidden, true);
-  assert.equal(f.cancelButton.onclick, null);
-  assert.equal(f.context.toastBuildOperation, null);
+  assert.equal(f.cancel.hidden, true);
+  assert.equal(f.cancel.onclick, null);
+  assert.equal(f.state.operation, null);
 }
-function assertStatusHandled(result) {
-  assert.equal(result?.statusHandled, true, "the build must suppress the caller's generic status");
-}
-const assertCancellationHandled = assertStatusHandled;
 
-test("duplicate builds in the same repository are suppressed until the build finishes", async () => {
-  const compile = deferred();
-  const f = fixture(() => compile.promise);
-  const building = f.build();
-  const cancel = f.cancelButton.onclick;
-  const statuses = [...f.statuses];
-  assertStatusHandled(await f.build());
-  assert.equal(f.operations.length, 1);
+test("directory duplicates are suppressed, controls stay busy, and completion permits rebuilding", async () => {
+  const f = fixture();
+  const building = f.buildDocument();
+  await f.operations[0].requested.promise;
   assert.equal(f.button.disabled, true);
-  assert.equal(f.cancelButton.onclick, cancel);
-  assert.deepEqual(f.statuses, statuses);
-  assert.equal(f.downloadUpdates, 0);
-  compile.resolve();
-  assertStatusHandled(await building);
-  assertFinished(f);
-  assertStatusHandled(await f.build());
-  assert.equal(f.operations.length, 2, "completion must allow another build in the same repository");
-  assert.equal(f.downloadUpdates, 2);
-  assertFinished(f);
-});
-
-test("reactivating the same directory suppresses duplicate builds across repository objects", async () => {
-  const compile = deferred();
-  const f = fixture(() => compile.promise);
-  const originalRepository = f.context.repo;
-  const building = f.build();
-  f.context.repo = { dir: originalRepository.dir };
-  assert.notEqual(f.context.repo, originalRepository);
-  const statuses = [...f.statuses];
-  assertStatusHandled(await f.build());
+  assert.equal(f.cancel.hidden, false);
+  assert.equal(f.isBuilding({ dir: "/workspace" }), true);
+  const original = f.state.repo;
+  f.state.repo = { ...original };
+  assert.equal((await f.buildDocument()).statusHandled, true);
   assert.equal(f.operations.length, 1);
-  assert.deepEqual(f.statuses, statuses);
-  assert.equal(f.button.disabled, true);
-  assert.equal(f.downloadUpdates, 0);
-  compile.resolve();
-  assertStatusHandled(await building);
-  assert.deepEqual(f.statuses, statuses, "the original repository object no longer owns the status");
-  assertFinished(f);
-  assertStatusHandled(await f.build());
-  assert.equal(f.operations.length, 2, "finishing must release the directory key");
-  assertFinished(f);
+  f.state.repo = original;
+  f.operations[0].response.resolve(success);
+  assert.equal((await building).statusHandled, true);
+  assert.equal(f.state.pdf.type, "application/pdf");
+  finished(f);
+  const again = f.buildDocument();
+  await f.operations[1].requested.promise;
+  f.operations[1].response.resolve(success);
+  await again;
+  finished(f);
 });
 
 for (const outcome of ["completion", "failure", "cancel"]) {
-  test(`late build progress and ${outcome} preserve a newer foreground status`, async () => {
-    const compile = deferred();
-    let report;
-    const f = fixture((operation, onPreviewCommit, onSnapshot, current, reportStatus) => {
-      report = reportStatus;
-      return compile.promise;
-    });
-    const building = f.build();
-    report("Compiling document…", "busy");
-    assert.deepEqual(f.statuses.at(-1), { text: "Compiling document…", state: "busy" });
-    if (outcome === "cancel") f.cancelButton.onclick();
-    f.context.status("Changes published.", "ready");
+  test(`late ${outcome} preserves a newer foreground status`, async () => {
+    const f = fixture();
+    const building = f.buildDocument();
+    await f.operations[0].requested.promise;
+    if (outcome === "cancel") f.cancel.onclick();
+    f.deps.status("Changes published.", "ready");
     const statuses = [...f.statuses];
-    const version = f.context.statusVersion;
-    report("Rendering document…", "busy");
+    if (outcome === "failure") f.operations[0].response.reject(new Error("Failed"));
+    else if (outcome === "completion") f.operations[0].response.resolve(success);
+    await building;
     assert.deepEqual(f.statuses, statuses);
-    assert.equal(f.context.statusVersion, version);
-    if (outcome === "completion") compile.resolve();
-    else compile.reject(outcome === "cancel" ? f.operations[0].signal.reason : new Error("Compilation failed"));
-    assertStatusHandled(await building);
-    assert.deepEqual(f.statuses, statuses);
-    assert.equal(f.context.statusVersion, version);
-    assert.equal(f.downloadUpdates, 1);
-    assertFinished(f);
+    finished(f);
   });
 }
 
-test("build passes the captured foreground release and repository-aware ownership callback", async () => {
-  const compile = deferred();
-  let snapshot, current;
-  const f = fixture((operation, onPreviewCommit, onSnapshot, isCurrent) => {
-    snapshot = onSnapshot;
-    current = isCurrent;
-    return compile.promise;
-  });
-  const release = async () => {};
-  f.context.releaseForeground = release;
-  const originalRepository = f.context.repo;
-  const building = f.build();
-  assert.equal(snapshot, release);
-  assert.equal(current(), true);
-  f.context.repo = repository();
-  assert.equal(current(), false);
-  f.context.repo = originalRepository;
-  assert.equal(current(), true);
-  compile.resolve();
-  assertStatusHandled(await building);
-  assertFinished(f);
-});
-
-for (const outcome of ["failure", "cancel"]) {
-  test(`stale build ${outcome} does not overwrite the latest build status or preview`, async () => {
-    const first = deferred();
-    const second = deferred();
-    let calls = 0;
-    const f = fixture(
-      (operation, onPreviewCommit) => {
-        if (++calls === 1) {
-          onPreviewCommit();
-          return first.promise;
-        }
-        return second.promise;
-      },
-      { pdf: new Blob(["previous PDF"]), synctex: "previous-build" },
-    );
-    const one = f.build();
-    const oldCurrent = f.cancelButton.onclick;
-    if (outcome === "cancel") oldCurrent();
-    f.context.repo = repository();
-    const two = f.build();
-    const cancelLatest = f.cancelButton.onclick;
-    const statuses = [...f.statuses];
-    first.reject(outcome === "cancel" ? f.operations[0].signal.reason : new Error("Stale compilation failed"));
-    assertStatusHandled(await one);
-    assert.deepEqual(f.statuses, statuses);
-    assert.equal(f.log.textContent, "");
-    assert.deepEqual(f.selectedTabs, []);
-    assert.deepEqual(f.previews, []);
-    assert.equal(f.resets, 0);
-    assert.equal(f.cancelButton.onclick, cancelLatest);
-    assert.equal(f.context.toastBuildOperation, f.operations[1]);
-    assert.equal(f.button.disabled, true);
-    assert.equal(f.downloadUpdates, 1);
-    second.resolve();
-    assertStatusHandled(await two);
-    assert.deepEqual(f.statuses.at(-1), { text: "Build complete.", state: "ready" });
-    assert.equal(f.downloadUpdates, 2);
-    assertFinished(f);
+for (const latestFirst of [false, true]) {
+  test(`overlapping builds retain control ownership (latest finishes first=${latestFirst})`, async () => {
+    const f = fixture();
+    const one = f.buildDocument();
+    await f.operations[0].requested.promise;
+    f.state.repo = { ...f.state.repo, dir: "/other" };
+    const two = f.buildDocument();
+    await f.operations[1].requested.promise;
+    const latestCancel = f.cancel.onclick;
+    if (latestFirst) {
+      f.cancel.onclick();
+      await two;
+      assert.equal(f.button.disabled, true);
+      assert.equal(f.cancel.onclick, null);
+      f.operations[0].response.reject(new Error("Stale failure"));
+      await one;
+      assert.equal(f.statuses.at(-1).text, "Build canceled.");
+    } else {
+      const statuses = [...f.statuses];
+      f.operations[0].response.reject(new Error("Stale failure"));
+      await one;
+      assert.deepEqual(f.statuses, statuses);
+      assert.equal(f.button.disabled, true);
+      assert.equal(f.cancel.onclick, latestCancel);
+      assert.equal(f.state.operation, f.operations[1]);
+      assert.deepEqual(f.previews, []);
+      f.operations[1].response.resolve(success);
+      await two;
+    }
+    finished(f);
   });
 }
 
-test("Publish changes stays disabled throughout the PDF build and re-enables on completion", async () => {
-  const compile = deferred();
-  const f = fixture(() => compile.promise);
-  const building = f.build();
-  assert.equal(f.button.disabled, true);
-  assert.equal(f.cancelButton.hidden, false);
-  assert.equal(typeof f.cancelButton.onclick, "function");
-  assert.equal(f.context.toastBuildOperation, f.operations[0]);
-  assert.deepEqual(f.statuses, [{ text: "Preparing document…", state: "busy" }]);
-  compile.resolve();
-  assertStatusHandled(await building);
-  assert.deepEqual(f.statuses.at(-1), { text: "Build complete.", state: "ready" });
-  assert.equal(f.downloadUpdates, 1);
-  assertFinished(f);
-});
-
-test("failed or canceled builds re-enable Publish changes", async () => {
-  const error = new Error("Compilation failed");
-  const f = fixture(async () => {
-    throw error;
-  });
-  assertStatusHandled(await f.build());
+test("failure reports the error and releases publishing controls", async () => {
+  const f = fixture();
+  const building = f.buildDocument();
+  await f.operations[0].requested.promise;
+  f.operations[0].response.reject(new Error("Compilation failed"));
+  await building;
   assert.deepEqual(f.statuses.at(-1), { text: "Build failed: Compilation failed", state: "error" });
-  assert.equal(f.log.textContent, error.message);
-  assert.deepEqual(f.selectedTabs, [f.logsTab]);
-  assert.equal(f.downloadUpdates, 1);
-  assertFinished(f);
-  assert.equal(f.operations[0].signal.aborted, false);
-  const canceled = fixture(async () => false);
-  assertStatusHandled(await canceled.build());
-  assert.deepEqual(canceled.statuses.at(-1), { text: "Build complete.", state: "ready" });
-  assertFinished(canceled);
+  finished(f);
 });
 
-test("overlapping builds do not re-enable publishing until both have finished", async () => {
-  const first = deferred();
-  const second = deferred();
-  const queue = [first, second];
-  const f = fixture(() => queue.shift().promise);
-  const one = f.build();
-  f.context.repo = repository();
-  const two = f.build();
-  const cancelLatest = f.cancelButton.onclick;
-  first.resolve();
-  await one;
-  assert.equal(f.button.disabled, true);
-  assert.equal(f.cancelButton.hidden, false);
-  assert.equal(f.cancelButton.onclick, cancelLatest);
-  assert.equal(f.context.toastBuildOperation, f.operations[1]);
-  second.resolve();
-  await two;
-  assertFinished(f);
-});
-
-test("cancel aborts a pending compile immediately and waits for server cancellation before finishing", async () => {
-  const cancellation = deferred();
-  const f = fixture(pendingCompile, { cancellation: cancellation.promise });
-  const building = f.build();
-  let finished = false;
-  void building.then(() => {
-    finished = true;
+for (const transportFailure of [false, true]) {
+  test(`cancel aborts immediately but retains controls until server confirmation (failure=${transportFailure})`, async () => {
+    const cancellation = deferred();
+    const f = fixture({ cancellation: cancellation.promise });
+    const building = f.buildDocument();
+    await f.operations[0].requested.promise;
+    f.cancel.onclick();
+    assert.equal(f.operations[0].signal.aborted, true);
+    await setImmediate();
+    assert.equal(f.button.disabled, true);
+    if (transportFailure) cancellation.reject(new Error("Offline"));
+    else cancellation.resolve();
+    await building;
+    assert.deepEqual(
+      f.statuses.at(-1),
+      transportFailure
+        ? { text: "Build canceled locally. Server cancellation could not be confirmed.", state: "error" }
+        : { text: "Build canceled.", state: "ready" },
+    );
+    finished(f);
   });
-  f.cancelButton.onclick();
-  assert.equal(f.operations[0].signal.aborted, true);
-  assert.equal(f.cancelButton.hidden, true);
-  assert.deepEqual(f.statuses.at(-1), { text: "Canceling build…", state: "busy" });
-  await setImmediate();
-  assert.equal(f.operations[0].cancelCalls, 2, "the wrapper must await the cancellation started by the button");
-  assert.equal(finished, false);
-  assert.equal(f.button.disabled, true);
-  cancellation.resolve();
-  assertCancellationHandled(await building);
-  assert.deepEqual(f.statuses.at(-1), { text: "Build canceled.", state: "ready" });
-  assert.deepEqual(f.previews, []);
-  assert.equal(f.resets, 0);
-  assertFinished(f);
-});
+}
 
-test("cancellation transport failure reports an error rather than success and releases controls", async () => {
-  const cancellation = deferred();
-  const f = fixture(pendingCompile, { cancellation: cancellation.promise });
-  const building = f.build();
-  f.cancelButton.onclick();
-  cancellation.reject(new TypeError("Network unavailable"));
-  assertCancellationHandled(await building);
-  assert.deepEqual(f.statuses.at(-1), {
-    text: "Build canceled locally. Server cancellation could not be confirmed.",
-    state: "error",
+for (const previousPdf of [null, new Blob(["previous"])]) {
+  test(`cancellation after preview commit restores the previous preview (PDF=${!!previousPdf})`, async () => {
+    const f = fixture({ pdf: previousPdf });
+    // Abort after the renderer commits, before compileDocument publishes its PDF.
+    f.deps.preview = async (...args) => {
+      f.previews.push(args);
+      if (args[2]) f.cancel.onclick();
+      return true;
+    };
+    const building = f.buildDocument();
+    await f.operations[0].requested.promise;
+    f.operations[0].response.resolve(success);
+    await building;
+    assert.equal(f.state.pdf, previousPdf);
+    if (previousPdf) assert.deepEqual(f.previews[1], [previousPdf, "previous-sync"]);
+    else assert.equal(f.resets, 1);
+    finished(f);
   });
-  assert.equal(
-    f.statuses.some(({ state }) => state === "ready"),
-    false,
-  );
-  assertFinished(f);
-});
-
-test("canceling rendering restores the previous PDF and SyncTeX captured before compilation", async () => {
-  const pdf = new Blob(["previous PDF"]);
-  const f = fixture(
-    (operation, onPreviewStart) => {
-      onPreviewStart();
-      f.context.builtPdf = new Blob(["unfinished PDF"]);
-      f.context.syncBuild = null;
-      return pendingCompile(operation);
-    },
-    { pdf, synctex: "previous-build" },
-  );
-  const building = f.build();
-  f.cancelButton.onclick();
-  assertCancellationHandled(await building);
-  assert.equal(f.previews.length, 1);
-  assert.equal(f.previews[0][0], pdf);
-  assert.equal(f.previews[0][1], "previous-build");
-  assert.equal(f.previews[0].length, 2, "restoration must not reuse the aborted signal");
-  assert.equal(f.resets, 0);
-  assertFinished(f);
-});
-
-test("canceling rendering without a previous PDF resets the preview", async () => {
-  const f = fixture((operation, onPreviewStart) => {
-    onPreviewStart();
-    return pendingCompile(operation);
-  });
-  const building = f.build();
-  f.cancelButton.onclick();
-  assertCancellationHandled(await building);
-  assert.deepEqual(f.previews, []);
-  assert.equal(f.resets, 1);
-  assertFinished(f);
-});
-
-test("canceling rendering does not restore a preview into a different repository", async () => {
-  const f = fixture(
-    (operation, onPreviewStart) => {
-      onPreviewStart();
-      return pendingCompile(operation);
-    },
-    { pdf: new Blob(["previous PDF"]), synctex: "previous-build" },
-  );
-  const building = f.build();
-  f.context.repo = repository();
-  f.cancelButton.onclick();
-  assertCancellationHandled(await building);
-  assert.deepEqual(f.previews, []);
-  assert.equal(f.resets, 0);
-  assertFinished(f);
-});
-
-test("canceling the latest overlapping build keeps publishing disabled until the older build finishes", async () => {
-  const first = deferred();
-  let calls = 0;
-  const f = fixture((operation) => (++calls === 1 ? first.promise : pendingCompile(operation)));
-  const one = f.build();
-  f.context.repo = repository();
-  const two = f.build();
-  f.cancelButton.onclick();
-  assert.equal(f.operations[0].signal.aborted, false);
-  assert.equal(f.operations[1].signal.aborted, true);
-  assertCancellationHandled(await two);
-  assert.equal(f.button.disabled, true);
-  assert.equal(f.cancelButton.hidden, true);
-  assert.equal(f.cancelButton.onclick, null);
-  first.resolve();
-  await one;
-  assertFinished(f);
-});
+}

@@ -2,22 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import vm from "node:vm";
-import { transform } from "esbuild";
+import { build } from "esbuild";
 
-const source = await readFile("src/application.ts", "utf8");
-function extract(startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start);
-  assert.ok(start >= 0 && end > start, `Missing source boundaries for ${startMarker}`);
-  return source.slice(start, end);
-}
-const { code } = await transform(
-  extract("async function run(", "const sidebarTabs =") + extract("function updatePdfDownload()", "function downloadBuiltPdf()"),
-  { loader: "ts" },
-);
+const { outputFiles } = await build({
+  entryPoints: ["src/ui/operations.ts"], bundle: true, write: false, format: "cjs", platform: "node",
+  plugins: [{ name: "dom-dependencies", setup(build) {
+    build.onLoad({ filter: /application-elements\.ts$/ }, () => ({ contents: "export const $ = (...args) => globalThis.queryElement(...args);", loader: "js" }));
+    build.onLoad({ filter: /modal-dialogs\.ts$/ }, () => ({ contents: "export const restoreFocus = (...args) => globalThis.restorePreviousFocus(...args);", loader: "js" }));
+  } }],
+});
+const code = outputFiles[0].text;
 
 function deferred() {
   let resolve;
@@ -41,14 +37,13 @@ function fixture() {
   const previousFocus = {};
   let locked = false;
   const context = vm.createContext({
-    busy: false,
-    busyControlsShown: false,
-    releaseForeground: null,
+    module: { exports: {} },
     repo: { dir: "/workspace/project" },
     meta: {},
     builtPdf: {},
     buildingRepositories: new Set(),
-    saving: Promise.resolve(),
+    isBuilding: (repo) => context.buildingRepositories.has(repo?.dir),
+    documents: { saving: Promise.resolve() },
     workspaceWarnings: new Map(),
     fs: {
       promises: {
@@ -58,7 +53,7 @@ function fixture() {
       },
     },
     document: { activeElement: previousFocus, querySelectorAll: () => controls },
-    $: (id) => {
+    queryElement: (id) => {
       assert.ok(Object.hasOwn(elements, id), `Unexpected element: ${id}`);
       return elements[id];
     },
@@ -78,7 +73,7 @@ function fixture() {
     refreshWarning: async () => {
       calls.warnings++;
     },
-    restoreFocus: (element) => {
+    restorePreviousFocus: (element) => {
       assert.equal(element, previousFocus);
       calls.focus++;
     },
@@ -94,6 +89,23 @@ function fixture() {
     clearTimeout,
   });
   vm.runInContext(code, context);
+  const runner = context.module.exports.createOperationRunner({
+    ...context,
+    getSaving: () => context.documents.saving,
+    getWorkspace: () => ({ repo: context.repo, meta: context.meta }),
+    updatePdfDownload: () => context.updatePdfDownload(),
+  });
+  context.updatePdfDownload = () => {
+    elements["download-pdf"].disabled = runner.controlsShown || !context.builtPdf;
+    elements.compile.disabled = runner.controlsShown || context.isBuilding(context.repo);
+    context.updateSyncControls();
+  };
+  context.run = runner.run;
+  Object.defineProperties(context, {
+    busy: { get: () => runner.busy },
+    busyControlsShown: { get: () => runner.controlsShown },
+    releaseForeground: { get: () => runner.releaseForeground },
+  });
   return {
     context,
     calls,
@@ -175,7 +187,7 @@ test("snapshot release unlocks navigation while the action waits, and stale comp
   assert.deepEqual(f.errors, []);
 });
 
-test("real PDF control refresh keeps compile disabled after foreground release until the repository build ends", async () => {
+test("injected PDF control refresh keeps compile disabled after foreground release until the repository build ends", async () => {
   const f = fixture();
   const request = deferred();
   const released = deferred();

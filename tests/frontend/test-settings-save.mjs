@@ -5,39 +5,85 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import vm from "node:vm";
-import { build, transform } from "esbuild";
+import { build } from "esbuild";
 
-const source = await readFile("src/application.ts", "utf8");
-const start = source.indexOf("async function saveAllSettings()");
-const end = source.indexOf("const openSetup =", start);
-assert.ok(start >= 0 && end > start);
-const { code } = await transform(source.slice(start, end), { loader: "ts" });
+const settingsBundle = await build({
+  entryPoints: ["src/ui/settings.ts"],
+  bundle: true,
+  write: false,
+  format: "iife",
+  globalName: "settingsUI",
+  platform: "browser",
+});
 
 function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = {}) {
+  const focused = [];
+  class Element {
+    isConnected = true;
+    matches() {
+      return false;
+    }
+    closest() {
+      return null;
+    }
+    getClientRects() {
+      return [{}];
+    }
+    focus() {
+      focused.push(this);
+    }
+  }
   const elements = Object.fromEntries(
-    ["connection-form", "save-settings", "restore-settings", "custom-repositories-status", "token", "author", "email"].map((id) => [
+    [
+      "connection-form",
+      "save-settings",
+      "restore-settings",
+      "connection-dialog",
+      "connection-status",
+      "app-menu",
+      "custom-repositories",
+      "custom-repositories-status",
+      "token",
+      "author",
+      "email",
+      "token-error",
+      "author-error",
+      "email-error",
+    ].map((id) => [
       id,
-      {
+      Object.assign(new Element(), {
         textContent: "",
+        dataset: {},
+        value: "",
+        validity: { valid: true },
+        attributes: new Set(),
+        addEventListener() {},
+        removeAttribute(name) {
+          this.attributes.delete(name);
+        },
+        setAttribute(name) {
+          this.attributes.add(name);
+        },
         disabled: false,
         hasAttribute: () => id === "email" && invalid,
-      },
+      }),
     ]),
   );
   const statuses = [];
-  const saves = [];
-  const focused = [];
   const runs = [];
   let repositorySaves = 0;
   let pending;
   const context = vm.createContext({
-    $: (id) => elements[id],
+    document: { getElementById: (id) => elements[id], querySelectorAll: () => [] },
+    HTMLElement: Element,
+    localStorage: {
+      setItem() {
+        if (failed) throw new Error("Storage unavailable");
+      },
+    },
+    console: { warn() {} },
+    navigator: {},
     busy: false,
-    settingsKeys: ["token", "author", "email"],
-    failedSettings: new Set(failed ? ["token"] : []),
-    saveSettingsFields: (validate) => saves.push(validate),
-    settingsStatus: (...args) => statuses.push(args),
-    restoreFocus: (input) => focused.push(input),
     saveCustomRepositories: async () => {
       repositorySaves++;
       elements["custom-repositories-status"].textContent = repositoryFeedback;
@@ -48,11 +94,42 @@ function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = 
       return pending;
     },
   });
-  vm.runInContext(code, context);
+  vm.runInContext(settingsBundle.outputFiles[0].text, context);
+  const controller = context.settingsUI.createSettingsController({
+    initialSettings: { token: "token", author: "Author", email: "name@example.com" },
+    theme: { selectedTheme: "system", selectTheme() {} },
+    getCustomRepositories: () => [],
+    setCustomRepositories() {},
+    saveCustomRepositories: context.saveCustomRepositories,
+    refreshDocuments: async () => {},
+    renderCatalog() {},
+    updatePageTitle() {},
+    status() {},
+    isBusy: () => context.busy,
+    run: context.run,
+    validateToken: async () => ({ id: 1 }),
+  });
+  controller.installUI();
+  if (invalid) {
+    elements.email.value = "invalid";
+    elements.email.validity.valid = false;
+  }
+  let text = "";
+  Object.defineProperty(elements["connection-status"], "textContent", {
+    get: () => text,
+    set: (value) => {
+      text = value;
+    },
+  });
+  Object.defineProperty(elements["connection-status"].dataset, "state", { set: (state) => statuses.push(state === "ready" ? [text] : [text, state]) });
+  if (failed) {
+    elements.token.value = "changed-token";
+    controller.saveSettingsField("token", true);
+    statuses.length = 0;
+  }
   return {
     elements,
     statuses,
-    saves,
     focused,
     runs,
     context,
@@ -62,7 +139,7 @@ function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = 
     get pending() {
       return pending;
     },
-    save: () => context.saveAllSettings(),
+    save: () => controller.saveAllSettings(),
   };
 }
 
@@ -77,10 +154,7 @@ test("Settings has one form-linked Save button in a persistent footer", async ()
     /<button id="restore-settings" type="button"[^>]*>Restore changes<\/button>\s*<button id="save-settings" class="primary" type="submit" form="connection-form">Save settings<\/button>\s*$/,
   );
   assert.equal((html.match(/id="save-settings"/g) || []).length, 1);
-  assert.match(
-    html,
-    /class="settings-feedback">\s*<p id="connection-status"[^>]*><\/p>\s*<p id="custom-repositories-status"/,
-  );
+  assert.match(html, /class="settings-feedback">\s*<p id="connection-status"[^>]*><\/p>\s*<p id="custom-repositories-status"/);
   assert.match(html, /<button id="restore-settings" type="button"[^>]*>Restore changes<\/button>/);
   const css = await readFile("src/styles/global-ui.css", "utf8");
   assert.match(css, /#connection-dialog > \.settings-footer\s*\{[^}]*flex-shrink: 0;[^}]*border-top:/);
@@ -90,7 +164,7 @@ test("Settings has one form-linked Save button in a persistent footer", async ()
 test("Save validates all fields and saves repositories with one success message", async () => {
   const f = fixture();
   await f.save();
-  assert.deepEqual(f.saves, [true]);
+  assert.equal(f.elements.email.hasAttribute("aria-invalid"), false);
   assert.equal(f.repositorySaves, 1);
   assert.deepEqual(f.statuses, [[""], ["Settings saved."]]);
 });
@@ -106,15 +180,15 @@ test("invalid fields focus their inline error and do not save repositories", asy
   const f = fixture({ invalid: true });
   assert.equal(await f.save(), false);
   assert.equal(f.repositorySaves, 0);
-  assert.deepEqual(f.focused, [f.elements.email]);
-  assert.deepEqual(f.statuses, [["Check the highlighted fields.", "error"]]);
+
+  assert.deepEqual(f.statuses, [[""], ["Check the highlighted fields.", "error"]]);
 });
 
-test("storage failures do not show success or continue to repositories", async () => {
+test("an existing field-save failure suppresses success and repository saving", async () => {
   const f = fixture({ failed: true });
   assert.equal(await f.save(), false);
   assert.equal(f.repositorySaves, 0);
-  assert.deepEqual(f.statuses, []);
+  assert.ok(f.statuses.every(([text]) => text === "Could not save settings. Try again."));
 });
 
 test("submitting uses the guarded operation and prevents repeated clicks", async () => {

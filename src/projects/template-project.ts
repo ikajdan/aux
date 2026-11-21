@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ApplicationProject } from "../application.js";
+import type { ApplicationProject } from "../application-types.js";
 import type { GitLabAPI } from "../gitlab-sync.js";
 import type { ServerConfig } from "../server-config.js";
 

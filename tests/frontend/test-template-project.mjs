@@ -88,6 +88,37 @@ test("polling always checks once at timeout zero but does not accept pending or 
   }
 });
 
+for (const ready of [true, false]) {
+  test(`polling retries until ${ready ? "the project is ready" : "the deadline, then stops"}`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
+    const project = { ...metadata, empty_repo: false, import_status: "finished" };
+    const f = fixture(
+      t,
+      [{ ...project, import_status: "pending" }, { ...project, import_status: "started" }, ready ? project : { ...project, import_status: "started" }],
+      "projects/42",
+    );
+    const polling = waitForTemplateProject(f.api, 42, 1500);
+    const advance = async (milliseconds) => {
+      t.mock.timers.tick(milliseconds);
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    await advance(0);
+    assert.equal(f.calls.length, 1);
+    await advance(999);
+    assert.equal(f.calls.length, 1);
+    await advance(1);
+    assert.equal(f.calls.length, 2);
+    await advance(499);
+    assert.equal(f.calls.length, 2);
+    await advance(1);
+    assert.deepEqual(await polling, ready ? project : null);
+    assert.equal(f.calls.length, 3);
+    await advance(10000);
+    assert.equal(f.calls.length, 3, "settled polling must not schedule more requests");
+  });
+}
+
 test("polling reports import failure with its detail or a generic error", async (t) => {
   for (const import_error of ["Fork import rejected", undefined]) {
     const f = fixture(t, [{ ...metadata, empty_repo: false, import_status: "failed", import_error }], "projects/42");

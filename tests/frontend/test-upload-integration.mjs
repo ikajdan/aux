@@ -2,20 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import vm from "node:vm";
-import { build, transform } from "esbuild";
+import { build } from "esbuild";
 
-const source = await readFile(new URL("../../src/application.ts", import.meta.url), "utf8");
-const start = source.indexOf("async function uploadFiles(");
-const end = source.indexOf('for (const id of ["uploads", "folder-uploads"])', start);
-assert.ok(start >= 0 && end > start, "Extract the actual application uploadFiles function");
-const { code } = await transform(source.slice(start, end), { loader: "ts", target: "es2022" });
 const bundled = await build({
   stdin: {
     contents:
-      'export { safePath } from "./src/gitlab-sync.ts"; export { uniqueUploadPath } from "./src/workspace/upload-conflicts.ts"; export { validateSnapshotSizes } from "./src/workspace/snapshot-limits.ts";',
+      'export { safePath } from "./src/gitlab-sync.ts"; export { createFileUpload } from "./src/workspace/file-upload.ts";',
     resolveDir: new URL("../..", import.meta.url).pathname,
   },
   bundle: true,
@@ -42,7 +35,7 @@ function fixture({ initial = {}, directories = [], choices = [], limits = {}, fi
       .slice(0, -1)
       .map((_, i, parts) => parts.slice(0, i + 1).join("/"));
   const isDirectory = (path) => dirs.has(path) || [...contents.keys(), ...dirs].some((entry) => entry.startsWith(`${path}/`));
-  const context = vm.createContext({
+  const context = {
     ...helpers,
     Uint8Array,
     workspaceReady: true,
@@ -106,8 +99,22 @@ function fixture({ initial = {}, directories = [], choices = [], limits = {}, fi
     syncTree() {
       events.push(`sync:${context.selectedTreePath}`);
     },
+  };
+  const uploadFiles = helpers.createFileUpload({
+    ready: () => context.workspaceReady,
+    getRepo: () => context.repo,
+    getFile: () => context.file,
+    resolveEditorDraft: () => context.resolveEditorDraft(),
+    markWorkspace: () => context.markWorkspace(),
+    refresh: () => context.refresh(),
+    openFile: (path) => context.openFile(path),
+    getSelection: () => context.selectedTreePath,
+    setSelection: (path) => { context.selectedTreePath = path; },
+    expandTreePath: (path) => context.expandTreePath(path),
+    syncTree: () => context.syncTree(),
+    uploadConflictDialog: (path) => context.uploadConflictDialog(path),
+    getLimits: () => context.serverConfig.limits,
   });
-  vm.runInContext(code, context, { filename: "upload-integration.js" });
   return {
     context,
     contents,
@@ -117,7 +124,7 @@ function fixture({ initial = {}, directories = [], choices = [], limits = {}, fi
     events,
     writable,
     answers,
-    upload: (...args) => context.uploadFiles(...args),
+    upload: (...args) => uploadFiles(...args),
     source(name, text = "new", relativePath = name) {
       return {
         name,

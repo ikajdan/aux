@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { readFile } from "node:fs/promises";
+import { loadDocumentBuild } from "./helpers/document-build.mjs";
 
 // Supply only rendering, modal lookup and event primitives; run the real shortcuts.
 class Element extends EventTarget {
@@ -151,55 +151,38 @@ for (const modifier of ["ctrlKey", "metaKey"]) {
   });
 }
 
-const application = await readFile(new URL("../../src/application.ts", import.meta.url), "utf8");
-
-// Execute the real build preflight up to snapshot collection, where compilation starts.
-const preflight = application.match(
-  /async function compileDocument\([\s\S]*?\): Promise<void \| false> \{([\s\S]*?)  const paths = await activeRepo.files\(\);/,
-)[1];
-const operation = { signal: { throwIfAborted() {} } };
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-test("build waits for save before collecting files", async () => {
+// Exercise save preflight through the exported factory, stopping at file collection.
+function preflight(saveDocument, saving = Promise.resolve()) {
   const calls = [];
-  let release;
-  const saved = new Promise((resolve) => {
-    release = resolve;
+  const stop = new Error("snapshot reached");
+  const repo = { files: async () => { calls.push("files"); throw stop; } };
+  const { compileDocument } = loadDocumentBuild()({
+    saveDocument,
+    getRepo: () => repo,
+    getSaving: () => saving,
   });
-  const run = new AsyncFunction(
-    "operation",
-    "saveDocument",
-    "repo",
-    "saving",
-    "createFileOperationProgress",
-    "status",
-    "current = () => true",
-    "report = status",
-    preflight + 'return "snapshot";',
-  );
-  const pending = run(
-    operation,
-    async () => {
-      calls.push("save");
-      await saved;
-      calls.push("saved");
-    },
-    {},
-    Promise.resolve(),
-    (report) => (progress) => report(progress.phase),
-    () => calls.push("prepare"),
-  );
-  assert.deepEqual(calls, ["save"]);
-  release();
-  assert.equal(await pending, "snapshot");
-  assert.deepEqual(calls, ["save", "saved", "prepare"]);
+  return { calls, stop, run: () => compileDocument({ signal: new AbortController().signal }) };
+}
+
+test("build waits for both the document save and queued saving before collecting files", async () => {
+  let saved, flushed;
+  const save = new Promise((resolve) => { saved = resolve; });
+  const saving = new Promise((resolve) => { flushed = resolve; });
+  const f = preflight(() => save, saving);
+  const pending = f.run();
+  const rejected = assert.rejects(pending, (error) => error === f.stop);
+  assert.deepEqual(f.calls, []);
+  saved();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.calls, []);
+  flushed();
+  await rejected;
+  assert.deepEqual(f.calls, ["files"]);
 });
-test("failed save prevents build preparation without prompting or discarding", async () => {
+
+test("failed save prevents snapshot collection", async () => {
   const failure = new Error("Storage write failed");
-  const run = new AsyncFunction("operation", "saveDocument", preflight);
-  await assert.rejects(
-    run(operation, async () => {
-      throw failure;
-    }),
-    (error) => error === failure,
-  );
+  const f = preflight(async () => { throw failure; });
+  await assert.rejects(f.run(), (error) => error === failure);
+  assert.deepEqual(f.calls, []);
 });

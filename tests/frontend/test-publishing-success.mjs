@@ -7,7 +7,7 @@ import { test } from "node:test";
 import vm from "node:vm";
 import { transform } from "esbuild";
 
-const source = await readFile("src/application.ts", "utf8");
+const source = await readFile("src/workspace/publishing.ts", "utf8");
 function extract(start, end) {
   const from = source.indexOf(start);
   const to = source.indexOf(end, from);
@@ -18,7 +18,7 @@ const { code } = await transform(
   [
     extract("const publishingSuccess =", "const pendingMergeRequests ="),
     extract("function updateCommitControls()", "async function switchToPublishedBranch("),
-    extract("async function push(", "const outputTabs ="),
+    extract("async function push(", "async function commit()"),
   ].join("\n"),
   { loader: "ts" },
 );
@@ -106,6 +106,21 @@ function fixture({ target = "main", fail = false, confirm = async () => true, st
       return true;
     },
   });
+  context.d = {
+    getMeta: () => context.meta,
+    getProject: () => context.project,
+    getRepository: () => context.repo,
+    getWorkspaces: () => context.workspaces,
+    isBusy: () => context.busy,
+    setMeta: (meta) => { context.meta = meta; },
+    setWorkspaces: (workspaces) => { context.workspaces = workspaces; },
+    resolveEditorDraft: (...args) => context.resolveEditorDraft(...args),
+    warningState: (...args) => context.warningState(...args),
+    markWorkspace: (...args) => context.markWorkspace(...args),
+    persist: (...args) => context.persist(...args),
+    refresh: (...args) => context.refresh(...args),
+    status: (...args) => context.status(...args),
+  };
   vm.runInContext(code, context);
   const badge = () => $("push-heading").querySelector(".publishing-success");
   const commitBadge = () => $("commit-heading").querySelector(".publishing-success");
@@ -297,4 +312,32 @@ test("pushing to the current branch does not ask to switch", async () => {
     false,
   );
   assert.equal(f.context.meta.remote, "published");
+});
+
+
+test("publishing factory owns independent caches and commit success state", async () => {
+  const { code: factoryCode } = await transform(source.slice(source.indexOf("export function createPublishing(")).replace("export function", "function"), { loader: "ts" });
+  const f = fixture();
+  vm.runInContext(factoryCode, f.context);
+  const dependencies = { ...f.context.d, api: f.context.api };
+  const first = f.context.createPublishing(dependencies);
+  const second = f.context.createPublishing(dependencies);
+  first.targetBranchCache.set("1", ["feature"]);
+  assert.equal(second.targetBranchCache.has("1"), false);
+
+  const events = [];
+  f.context.$("message").value = "Commit changes";
+  f.context.$("author").value = "Test Author";
+  f.context.$("email").value = "test@example.invalid";
+  f.context.repo.changes = async () => ["main.tex"];
+  f.context.resolveEditorDraft = async () => { events.push("draft"); return true; };
+  f.context.markWorkspace = () => events.push("mark");
+  f.context.repo.commit = async () => { events.push("commit"); };
+  f.context.refresh = async () => { events.push("refresh"); };
+  await first.commit();
+  assert.deepEqual(events, ["draft", "mark", "commit", "refresh"]);
+  first.updateCommitControls();
+  assert.equal(f.commitBadge().hidden, false);
+  second.updateCommitControls();
+  assert.equal(f.commitBadge().hidden, true, "success is owned by each controller");
 });

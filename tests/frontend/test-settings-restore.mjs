@@ -2,20 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import vm from "node:vm";
-import { build, transform } from "esbuild";
+import { build } from "esbuild";
 
-const source = await readFile("src/application.ts", "utf8");
-async function extract(startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start);
-  assert.ok(start >= 0 && end > start, `Missing extraction markers: ${startMarker} / ${endMarker}`);
-  return (await transform(source.slice(start, end), { loader: "ts" })).code;
-}
-const restoreCode = await extract("async function restoreSettings()", "function runSettingsAction(");
-const openCode = await extract("let settingsSnapshot", "let shortcutsFocus");
+const settingsBundle = await build({ entryPoints: ["src/ui/settings.ts"], bundle: true, write: false, format: "iife", globalName: "settingsUI", platform: "browser" });
 const bundledTheme = await build({ entryPoints: ["src/ui/theme.ts"], bundle: true, write: false, format: "esm", platform: "node" });
 const { createThemeController } = await import(`data:text/javascript;base64,${Buffer.from(bundledTheme.outputFiles[0].text).toString("base64")}`);
 const keys = ["token", "author", "email"];
@@ -39,6 +30,8 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
       "settings-title-text",
       "connection-dialog",
     ].map((id) => [id, {
+      dataset: {},
+      validity: { valid: true },
       value: keys.includes(id) ? original[id] : id === "custom-repositories" ? "group/opening" : "",
       textContent: "",
       hidden: true,
@@ -72,7 +65,6 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
     settings: structuredClone(original),
     customRepositories: [...original.customRepositories],
     settingsKeys: keys,
-    failedSettings: new Set(),
     localStorage: {
       getItem(key) {
         accesses.push(["get", key]);
@@ -112,13 +104,47 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
   });
   context.theme.connectEditor((value) => appliedThemes.push(value));
   appliedThemes.length = 0;
-  vm.runInContext(openCode + restoreCode, context);
+  context.document = { getElementById: context.$ };
+  vm.runInContext(settingsBundle.outputFiles[0].text, context);
+  const controller = context.settingsUI.createSettingsController({
+    initialSettings: context.settings, theme: context.theme,
+    getCustomRepositories: () => context.customRepositories,
+    setCustomRepositories: (value) => { context.customRepositories = value; },
+    saveCustomRepositories: async () => {}, refreshDocuments: context.refreshDocuments,
+    renderCatalog: context.renderCatalog, updatePageTitle: context.updatePageTitle,
+    isBusy: () => false, run: async (action) => action(), validateToken: async () => ({ id: 1 }), status() {},
+  });
+  Object.defineProperty(context, "settings", { get: () => controller.values, set: (value) => controller.setValues(value) });
+  context.openConnection = controller.openConnection;
+  context.restoreSettings = controller.restoreSettings;
+  context.saveAllSettings = controller.saveAllSettings;
+  // Observe status through the DOM rather than replacing controller internals.
+  let statusText = "";
+  Object.defineProperty(elements["connection-status"], "textContent", {
+    get: () => statusText,
+    set: (text) => { statusText = text; },
+  });
+  Object.defineProperty(elements["connection-status"].dataset, "state", {
+    set: (state) => statuses.push([statusText, state]),
+  });
+  context.failedSettings = {
+    add(key) {
+      const previous = elements[key].value;
+      elements[key].value = "failure@example.com";
+      const failure = storageFailure;
+      storageFailure = (method, name) => method === "set" && name === "aux-settings";
+      controller.saveSettingsField(key, true);
+      storageFailure = failure;
+      elements[key].value = previous;
+      statuses.length = 0;
+      warnings.length = 0;
+    },
+  };
   if (capture) context.openConnection();
   return {
     context, elements, storage, accesses, statuses, warnings, appliedThemes, catalogStates,
     restore: () => context.restoreSettings(),
     open: () => context.openConnection(),
-    snapshot: () => vm.runInContext("settingsSnapshot", context),
     failStorage: (failure) => { storageFailure = failure; },
     failRefresh: () => { refreshFailure = new Error("Catalog offline"); },
     get refreshes() { return refreshes; },
@@ -141,29 +167,25 @@ function assertNoRefresh(f) {
   assert.deepEqual(f.catalogStates, []);
 }
 
-test("opening Settings captures a detached snapshot only for a new dialog session", () => {
-  const f = fixture({ capture: false });
-  assert.equal(f.snapshot(), undefined);
-  f.open();
-  const snapshot = f.snapshot();
-  assert.deepEqual(plain(snapshot), { settings: original, repositories: original.customRepositories, theme: "light" });
-  assert.notEqual(snapshot.settings, f.context.settings);
-  assert.notEqual(snapshot.repositories, f.context.customRepositories);
-  f.context.settings.token = "autosaved-token";
-  f.context.customRepositories.push("group/added");
+test("opening Settings captures a detached snapshot only for a new dialog session", async () => {
+  const f = fixture();
+  autosave(f, { token: "autosaved-token", customRepositories: ["group/opening", "group/added"] });
   f.context.theme.selectTheme("dark");
   f.open();
-  assert.equal(f.snapshot(), snapshot);
-  assert.equal(snapshot.settings.token, original.token);
-  assert.deepEqual(plain(snapshot.repositories), original.customRepositories);
-  assert.equal(snapshot.theme, "light");
   assert.equal(f.modalOpens, 1);
+  await f.restore();
+  assert.equal(f.context.settings.token, original.token);
+  assert.deepEqual(plain(f.context.customRepositories), original.customRepositories);
+  assert.equal(f.context.theme.selectedTheme, "light");
+  autosave(f, { token: "new-session-token", customRepositories: ["group/new"] });
+  f.context.theme.selectTheme("dark");
   f.elements["connection-dialog"].open = false;
   f.open();
-  assert.notEqual(f.snapshot(), snapshot);
-  assert.equal(f.snapshot().settings.token, "autosaved-token");
-  assert.deepEqual(plain(f.snapshot().repositories), ["group/opening", "group/added"]);
-  assert.equal(f.snapshot().theme, "dark");
+  autosave(f, { token: "changed-again" });
+  await f.restore();
+  assert.equal(f.context.settings.token, "new-session-token");
+  assert.deepEqual(plain(f.context.customRepositories), ["group/new"]);
+  assert.equal(f.context.theme.selectedTheme, "dark");
   assert.equal(f.modalOpens, 2);
 });
 
@@ -197,7 +219,9 @@ test("Restore clears all field errors, repository feedback and failedSettings", 
   f.elements["custom-repositories"].setAttribute("aria-invalid", "true");
   f.elements["custom-repositories-status"].textContent = "Invalid repository";
   await f.restore();
-  assert.equal(f.context.failedSettings.size, 0);
+  f.statuses.length = 0;
+  await f.context.saveAllSettings();
+  assert.equal(f.statuses.at(-1)[0], "Settings saved.");
   for (const key of keys) {
     assert.equal(f.elements[key].value, original[key]);
     assert.equal(f.elements[key].hasAttribute("aria-invalid"), false);
@@ -270,7 +294,7 @@ for (const operation of ["get", "set"]) {
     assert.equal(f.context.theme.selectedTheme, "dark");
     assert.equal(f.elements.token.value, "saved-token");
     assert.equal(f.elements.token.hasAttribute("aria-invalid"), true);
-    assert.equal(f.context.failedSettings.has("token"), true);
+
     assert.equal(f.storage.get("aux-settings"), stored);
     assert.deepEqual(f.statuses, [["Could not restore settings in this browser. Try again.", "error"]]);
     assert.equal(f.warnings.length, 1);

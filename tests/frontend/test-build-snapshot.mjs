@@ -2,15 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import vm from "node:vm";
-import { transform } from "esbuild";
-
-const source = await readFile("src/application.ts", "utf8");
-const start = source.indexOf("async function compileDocument(");
-const end = source.indexOf("async function activate(", start);
-const { code } = await transform(source.slice(start, end), { loader: "ts" });
+import { loadDocumentBuild } from "./helpers/document-build.mjs";
 
 function deferred() {
   let resolve;
@@ -24,28 +17,36 @@ function fixture() {
   const calls = [];
   let current = true;
   const controller = new AbortController();
-  const context = vm.createContext({
+  const context = {
     repo: { dir: "/workspace", modes: {}, files: async () => ["main.tex"] },
     saving: Promise.resolve(),
     saveDocument: async () => { calls.push("save"); },
     fs: { promises: { readFile: async () => { calls.push("read"); return new Uint8Array([1]); } } },
     serverConfig: { limits: {} },
-    createFileOperationProgress: () => () => {},
-    validateSnapshotSizes() {},
-    materializeSymlinkFiles: (files) => files,
-    encode64: () => "AQ==",
     validateRequestSize: () => { calls.push("validate"); },
-    decode64: () => new Uint8Array([2]),
-    Blob,
-    status() {},
     builtPdf: null,
     updateLog: () => { calls.push("log"); },
     selectOutputTab: () => { calls.push("tab"); },
-    $: (id) => id,
     preview: async () => { calls.push("preview"); return true; },
     updatePdfDownload: () => { calls.push("download"); },
+  };
+  const createDocumentBuild = loadDocumentBuild({
+    validateRequestSize: (...args) => context.validateRequestSize(...args),
   });
-  vm.runInContext(code, context);
+  const { compileDocument } = createDocumentBuild({
+    getRepo: () => context.repo,
+    getSaving: () => context.saving,
+    getLimits: () => context.serverConfig.limits,
+    saveDocument: () => context.saveDocument(),
+    fs: context.fs,
+    status: () => {},
+    getBuiltPdf: () => context.builtPdf,
+    updateLog: (...args) => context.updateLog(...args),
+    selectLogs: () => context.selectOutputTab(),
+    preview: (...args) => context.preview(...args),
+    setBuiltPdf: (pdf) => { context.builtPdf = pdf; },
+    updatePdfDownload: () => context.updatePdfDownload(),
+  });
   const operation = {
     id: "build",
     signal: controller.signal,
@@ -58,7 +59,7 @@ function fixture() {
   return {
     context, calls, response, requested,
     invalidate: () => { current = false; },
-    build: (release = async () => { calls.push("release"); }) => context.compileDocument(
+    build: (release = async () => { calls.push("release"); }) => compileDocument(
       operation, () => { calls.push("commit"); }, release, () => current,
     ),
     complete: () => response.resolve({ ok: true, json: async () => ({ pdf: "Ag==", log: "Built", synctex: "sync" }) }),
@@ -108,25 +109,22 @@ test("a newer build invalidates an old response even in the same repository", as
   assert.equal(f.context.builtPdf, null);
 });
 
-for (const committed of [true, false]) {
-  test(`workspace change during PDF rendering cannot publish the download (preview committed=${committed})`, async () => {
-    const f = fixture();
-    const rendering = deferred();
-    const shown = deferred();
-    f.context.preview = () => { shown.resolve(); return rendering.promise; };
-    const pending = f.build();
-    await f.requested.promise;
-    f.complete();
-    await shown.promise;
-    f.context.repo = { dir: "/other" };
-    rendering.resolve(committed);
-    await pending;
-    assert.equal(f.context.builtPdf, null);
-    assert.equal(f.calls.includes("commit"), false);
-    assert.equal(f.calls.includes("download"), false);
-  });
-}
-
+test("workspace change during PDF rendering cannot publish the download", async () => {
+  const f = fixture();
+  const rendering = deferred();
+  const shown = deferred();
+  f.context.preview = () => { shown.resolve(); return rendering.promise; };
+  const pending = f.build();
+  await f.requested.promise;
+  f.complete();
+  await shown.promise;
+  f.context.repo = { dir: "/other" };
+  rendering.resolve(true);
+  await pending;
+  assert.equal(f.context.builtPdf, null);
+  assert.equal(f.calls.includes("commit"), false);
+  assert.equal(f.calls.includes("download"), false);
+});
 test("superseded PDF rendering cannot publish a download even without a repository change", async () => {
   const f = fixture();
   f.context.preview = async () => false;
@@ -137,3 +135,31 @@ test("superseded PDF rendering cannot publish a download even without a reposito
   assert.equal(f.context.builtPdf, null);
   assert.equal(f.calls.includes("commit"), false);
 });
+
+test("ownership lost while decoding response JSON cannot publish logs or PDF", async () => {
+  const f = fixture();
+  const json = deferred();
+  const decoding = deferred();
+  const pending = f.build();
+  await f.requested.promise;
+  f.response.resolve({ ok: true, json: () => { decoding.resolve(); return json.promise; } });
+  await decoding.promise;
+  f.invalidate();
+  json.resolve({ pdf: "Ag==", log: "Stale" });
+  await pending;
+  assert.equal(f.calls.includes("log"), false);
+  assert.equal(f.calls.includes("preview"), false);
+  assert.equal(f.context.builtPdf, null);
+});
+
+for (const stage of ["saveDocument", "readFile"]) {
+  test(`${stage} failure does not release navigation or send a request`, async () => {
+    const f = fixture();
+    const fail = async () => { throw new Error("Storage unavailable"); };
+    if (stage === "readFile") f.context.fs.promises.readFile = fail;
+    else f.context.saveDocument = fail;
+    await assert.rejects(f.build(), /Storage unavailable/);
+    assert.equal(f.calls.includes("release"), false);
+    assert.equal(f.calls.includes("request"), false);
+  });
+}

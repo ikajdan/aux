@@ -29,10 +29,12 @@ function api(tree, content = "YWJj") {
   return { pages: async () => tree, request: async () => ({ content }) };
 }
 test("snapshot imports use configured byte, file, and entry limits", async () => {
-  assert.equal((await fetchSnapshot(api([file("main.tex")]), 1, sha, "team/docs", limits)).files.length, 1);
+  const directory = (path) => ({ path, id: sha, type: "tree", mode: "040000" });
+  const snapshot = await fetchSnapshot(api([directory("src"), file("src/main.tex")]), 1, sha, "team/docs", limits);
+  assert.deepEqual(snapshot.files, [{ path: "src/main.tex", bytes: new TextEncoder().encode("abc"), mode: "100644" }]);
   await assert.rejects(fetchSnapshot(api([file("main.tex")], "YWJjZA=="), 1, sha, "team/docs", limits), /compilation limits/);
   await assert.rejects(fetchSnapshot(api([file("a"), file("b")], "YQ=="), 1, sha, "team/docs", limits), /compilation limits/);
-  await assert.rejects(fetchSnapshot(api([file("a"), file("b"), file("c")]), 1, sha, "team/docs", limits), /entry limit/);
+  await assert.rejects(fetchSnapshot(api([directory("a"), directory("b"), directory("c")]), 1, sha, "team/docs", limits), /entry limit/);
 });
 test("zero configured submodule depth rejects children", async () => {
   const tree = [file(".gitmodules"), { path: "child", id: sha, type: "commit", mode: "160000" }];

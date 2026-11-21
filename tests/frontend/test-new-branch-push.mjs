@@ -7,9 +7,9 @@ import { test } from "node:test";
 import vm from "node:vm";
 import { build, transform } from "esbuild";
 
-const source = await readFile("src/application.ts", "utf8");
+const source = await readFile("src/workspace/publishing.ts", "utf8");
 const from = source.indexOf("async function push(");
-const to = source.indexOf("const outputTabs =", from);
+const to = source.indexOf("async function commit()", from);
 assert.ok(from >= 0 && to > from, "Extract the actual application push function");
 const { code } = await transform(source.slice(from, to), { loader: "ts" });
 const bundled = await build({ entryPoints: ["src/gitlab-merge-request.ts"], bundle: true, write: false, format: "esm", platform: "browser" });
@@ -108,6 +108,21 @@ function fixture(t, steps) {
     },
     status: (message, state) => events.push({ message, state }),
   });
+  context.d = {
+    getMeta: () => context.meta,
+    getProject: () => context.project,
+    getRepository: () => context.repo,
+    getWorkspaces: () => context.workspaces,
+    isBusy: () => context.busy,
+    setMeta: (meta) => { context.meta = meta; },
+    setWorkspaces: (workspaces) => { context.workspaces = workspaces; },
+    resolveEditorDraft: (...args) => context.resolveEditorDraft(...args),
+    warningState: (...args) => context.warningState(...args),
+    markWorkspace: (...args) => context.markWorkspace(...args),
+    persist: (...args) => context.persist(...args),
+    refresh: (...args) => context.refresh(...args),
+    status: (...args) => context.status(...args),
+  };
   vm.runInContext(code, context);
   t.after(() => {
     assert.deepEqual(failures, [], "All API requests must match, even when production catches an error");

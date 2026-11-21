@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ApplicationProject, ApplicationWorkspace } from "./application.js";
+import type { ApplicationProject, ApplicationWorkspace } from "./application-types.js";
 
 // Resolve storage inside the guard: accessing the browser's getter can itself throw.
 export function readStorage(key: string): string | null {

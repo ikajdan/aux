@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Ignacy Kajdan <ignacy.kajdan@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -88,8 +89,28 @@ class RequestValidationTests(unittest.TestCase):
                 )
 
     def test_compile_slot_is_released_after_validation_failure(self):
-        for _ in range(server.CONFIG["maxConcurrentBuilds"] + 1):
-            self.assertEqual(self.client.post("/compile", json=[]).status_code, 400)
+        slots = threading.BoundedSemaphore(1)
+        validate = server.compiler.compile_document
+
+        def validate_with_slot_held(data, job):
+            self.assertFalse(slots.acquire(blocking=False))
+            return validate(data, job)
+
+        with (
+            patch.object(server.compiler, "slots", slots),
+            patch.object(
+                server.compiler, "compile_document", side_effect=validate_with_slot_held
+            ) as compile_document,
+            patch.object(compilation.subprocess, "Popen") as popen,
+        ):
+            response = self.client.post(
+                "/compile", json={"files": [{"path": "main.tex", "content": 12}]}
+            )
+        self.assertEqual(response.status_code, 400)
+        compile_document.assert_called_once()
+        popen.assert_not_called()
+        self.assertTrue(slots.acquire(blocking=False), "validation leaked compile slot")
+        slots.release()
 
     def test_synctex_rejects_non_object_json(self):
         response = self.client.post(

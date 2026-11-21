@@ -5,15 +5,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const source = await readFile(new URL("../../src/application.ts", import.meta.url), "utf8");
+const source = await readFile(new URL("../../src/workspace/publishing.ts", import.meta.url), "utf8");
 const start = source.indexOf("async function openPublishing()");
-const end = source.indexOf('$("publishing").onclick', start);
+const end = source.indexOf("function mergeRequestTarget()", start);
 assert.ok(start >= 0 && end > start, "publishing opener located");
 const makeOpener = new Function(
   "dependencies",
   `
   const { $, resolveEditorDraft, updateTargetBranches, loadTargetBranches,
     pendingMergeRequest, refreshBranchMergeRequest, refreshWarning, updatePageTitle, meta, repo } = dependencies;
+  const d = {
+    resolveEditorDraft, refreshWarning, updatePageTitle,
+    getMeta: () => dependencies.meta,
+    getRepository: () => dependencies.repo,
+  };
   ${source.slice(start, end)}
   return openPublishing;
 `,

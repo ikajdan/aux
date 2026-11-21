@@ -27,6 +27,7 @@ class ConfigTests(unittest.TestCase):
         self.path.write_text(json.dumps(config), encoding="utf-8")
 
     def test_override_is_loaded_at_startup_and_served(self):
+        self.config["mainDocument"] = "文書/annual report.tex"
         self.config["limits"] = {
             **configuration.DEFAULT_LIMITS,
             "requestBytes": 1024,
@@ -53,13 +54,59 @@ class ConfigTests(unittest.TestCase):
             "limits": self.config["limits"],
             "maxConcurrentBuilds": 6,
             "logLevel": "INFO",
-            "mainDocument": "main.tex",
+            "mainDocument": self.config["mainDocument"],
             "templateRepository": "",
         }
         self.assertEqual(
             json.loads(result.stdout.splitlines()[-1]),
             [200, expected, "no-store", "https://gitlab.example/team/api/v4/"],
         )
+
+    def test_local_config_merges_nested_limits_and_replaces_groups(self):
+        self.write_config(
+            {
+                **self.config,
+                "limits": {"requestBytes": 1024, "snapshotBytes": 512},
+            }
+        )
+        groups = [{"name": "Local", "path": "local/docs"}]
+        self.path.with_name("config.local.json").write_text(
+            json.dumps(
+                {
+                    "mainDocument": "docs/local.tex",
+                    "repositoryGroups": groups,
+                    "limits": {"requestBytes": 2048},
+                }
+            ),
+            encoding="utf-8",
+        )
+        effective = configuration.load_config(self.path)
+        self.assertEqual(effective["gitlabUrl"], "https://gitlab.example/team")
+        self.assertEqual(effective["mainDocument"], "docs/local.tex")
+        self.assertEqual(effective["repositoryGroups"], groups)
+        self.assertEqual(
+            effective["limits"],
+            {
+                **configuration.DEFAULT_LIMITS,
+                "requestBytes": 2048,
+                "snapshotBytes": 512,
+            },
+        )
+
+    def test_malformed_and_invalid_local_overrides_are_rejected(self):
+        self.write_config(self.config)
+        local_path = self.path.with_name("config.local.json")
+        for text in ("{", "[]", json.dumps({"limits": {"requestBytes": 0}})):
+            with self.subTest(text=text):
+                local_path.write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError) as caught:
+                    configuration.load_config(self.path)
+                message = str(caught.exception)
+                self.assertIn("Invalid Aux config", message)
+                if text in ("{", "[]"):
+                    self.assertIn(str(local_path), message)
+                else:
+                    self.assertIn("limits.requestBytes", message)
 
     def test_invalid_values(self):
         cases = [None, [], {}, {**self.config, "secret": "never expose"}]
@@ -281,25 +328,6 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Invalid Aux config"):
                     configuration.load_config(self.path)
 
-    def test_main_document_override_is_loaded_at_startup(self):
-        main = "文書/annual report.tex"
-        self.write_config({**self.config, "mainDocument": main})
-        code = (
-            "import server.server as s; import json; "
-            "print(json.dumps([s.CONFIG['mainDocument'], "
-            "s.app.test_client().get('/config').get_json()['mainDocument']]))"
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=Path(server.__file__).resolve().parent.parent,
-            env={**os.environ, "AUX_CONFIG_FILE": str(self.path)},
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=True,
-        )
-        self.assertEqual(json.loads(result.stdout.splitlines()[-1]), [main, main])
-
     def test_invalid_concurrent_build_counts(self):
         for value in (None, True, False, "6", 1.5, 0, -1, [], {}, 9007199254740992):
             with self.subTest(value=value):
@@ -334,7 +362,8 @@ print(json.dumps([capacity, acquired]))
                     check=True,
                 )
                 self.assertEqual(
-                    json.loads(result.stdout.splitlines()[-1]), [expected, [True] * expected + [False]]
+                    json.loads(result.stdout.splitlines()[-1]),
+                    [expected, [True] * expected + [False]],
                 )
 
     def test_invalid_limits(self):
@@ -379,7 +408,9 @@ with patch.object(compilation.subprocess, "Popen") as process:
             timeout=10,
             check=True,
         )
-        limit, flask_limit, responses, calls = json.loads(result.stdout.splitlines()[-1])
+        limit, flask_limit, responses, calls = json.loads(
+            result.stdout.splitlines()[-1]
+        )
         self.assertEqual((limit, flask_limit, calls), (128, 128, 0))
         self.assertEqual([r[0] for r in responses], [400, 400, 400])
         self.assertIn("128 bytes", responses[0][1]["error"])

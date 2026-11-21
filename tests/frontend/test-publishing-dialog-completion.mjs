@@ -7,7 +7,7 @@ import { test } from "node:test";
 import vm from "node:vm";
 import { transform } from "esbuild";
 
-const source = await readFile("src/application.ts", "utf8");
+const source = await readFile("src/workspace/publishing.ts", "utf8");
 const start = source.indexOf("async function publishMergeRequest()");
 const end = source.indexOf("async function push(", start);
 assert.ok(start >= 0 && end > start);
@@ -42,6 +42,21 @@ function fixture({ create = async () => ({ iid: 1, web_url: "https://gitlab.exam
     recordPublishingSuccess() {},
     showPublishedBranch: completion,
   });
+  context.d = {
+    getMeta: () => context.meta,
+    getProject: () => context.project,
+    getRepository: () => context.repo,
+    getWorkspaces: () => context.workspaces,
+    isBusy: () => context.busy,
+    setMeta: (meta) => { context.meta = meta; },
+    setWorkspaces: (workspaces) => { context.workspaces = workspaces; },
+    resolveEditorDraft: (...args) => context.resolveEditorDraft(...args),
+    warningState: (...args) => context.warningState(...args),
+    markWorkspace: (...args) => context.markWorkspace(...args),
+    persist: (...args) => context.persist(...args),
+    refresh: (...args) => context.refresh(...args),
+    status: (...args) => context.status(...args),
+  };
   vm.runInContext(code, context);
   return { dialog, publish: () => context.publishMergeRequest() };
 }

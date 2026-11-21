@@ -4,7 +4,7 @@
 import io
 import unittest
 from email.message import Message
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from backend_support import gitlab_proxy, server
 
@@ -290,6 +290,95 @@ class RelayTests(unittest.TestCase):
                     self.assertEqual(response.status_code, status)
                     self.assertEqual(response.data, payload)
                     self.assertEqual(response.mimetype, "application/json")
+
+    def test_canonical_project_redirect_preserves_query_and_rejects_unsafe_targets(
+        self,
+    ):
+        upstream = "https://gitlab.example/api/v4/"
+        source = upstream + "projects/team%2Fdocs/repository/tree?ref=release&page=2"
+        target = upstream + "projects/42/repository/tree"
+        for location, expected in (
+            (target, target + "?ref=release&page=2"),
+            (target + "?page=2&ref=release", target + "?ref=release&page=2"),
+            (upstream + "projects/42/repository/files", None),
+            (target + "?ref=other&page=2", None),
+            (target.replace("gitlab.example", "untrusted.example"), None),
+            (target.replace("https:", "http:"), None),
+            (target.replace("gitlab.example", "user:pass@gitlab.example"), None),
+        ):
+            with self.subTest(location=location):
+                self.assertEqual(
+                    gitlab_proxy.canonical_project_redirect(upstream, source, location),
+                    expected,
+                )
+
+    def test_canonical_project_redirect_relays_success_and_preserves_pat_and_query(
+        self,
+    ):
+        endpoint = "projects/team%2Fdocs/repository/tree?ref=release&page=2"
+        target = self.upstream + "projects/42/repository/tree"
+        redirect = gitlab_proxy.urllib.error.HTTPError(
+            self.upstream + endpoint, 302, "Found", {"Location": target}, io.BytesIO()
+        )
+        upstream = Mock(code=200)
+        upstream.__enter__ = Mock(return_value=upstream)
+        upstream.__exit__ = Mock(return_value=False)
+        upstream.read.return_value = b'[{"name":"main.tex"}]'
+        with (
+            patch.object(redirect, "close", wraps=redirect.close) as close,
+            patch.object(gitlab_proxy.urllib.request, "build_opener") as build_opener,
+        ):
+            opener = build_opener.return_value
+            opener.open.side_effect = [redirect, upstream]
+            response = self.client.get(
+                "/api/" + endpoint, headers={"PRIVATE-TOKEN": "test-pat"}
+            )
+            close.assert_called_once_with()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, upstream.read.return_value)
+        requests = [entry.args[0] for entry in opener.open.call_args_list]
+        self.assertEqual(
+            [request.full_url for request in requests],
+            [self.upstream + endpoint, target + "?ref=release&page=2"],
+        )
+        for request in requests:
+            self.assertEqual(request.get_method(), "GET")
+            self.assertEqual(request.get_header("Private-token"), "test-pat")
+
+    def test_canonical_redirect_attempts_are_bounded_and_post_is_not_followed(self):
+        for method, attempts in (("GET", 3), ("POST", 1)):
+            with self.subTest(method=method):
+                redirects = [
+                    gitlab_proxy.urllib.error.HTTPError(
+                        self.upstream + f"projects/{project}",
+                        302,
+                        "Found",
+                        {"Location": self.upstream + f"projects/{project + 1}"},
+                        io.BytesIO(b"redirect body"),
+                    )
+                    for project in range(1, attempts + 1)
+                ]
+                with patch.object(
+                    gitlab_proxy.urllib.request, "build_opener"
+                ) as build_opener:
+                    opener = build_opener.return_value
+                    opener.open.side_effect = redirects
+                    response = self.client.open(
+                        "/api/projects/1",
+                        method=method,
+                        json={},
+                        headers={"PRIVATE-TOKEN": "test-pat"},
+                    )
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.data, b"redirect body")
+                self.assertEqual(opener.open.call_count, attempts)
+                self.assertEqual(
+                    [entry.args[0].full_url for entry in opener.open.call_args_list],
+                    [
+                        self.upstream + f"projects/{project}"
+                        for project in range(1, attempts + 1)
+                    ],
+                )
 
     def test_redirect_does_not_send_pat_to_another_host(self):
         for endpoint in ("user", "users?username=foo", "users/42/projects?page=2"):
