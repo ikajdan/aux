@@ -899,6 +899,7 @@ function button(text: string, action: Operation, iconName: IconName = "file", qu
   b.onclick = () => run(action, text, quiet, false, options);
   return b;
 }
+let releaseForeground: (() => Promise<void>) | null = null;
 const backgroundActions = new Set<string>();
 async function runBackground(action: Operation, label: string, key: string) {
   if (backgroundActions.has(key)) return;
@@ -959,35 +960,17 @@ async function run(
   let busyTimer: ReturnType<typeof setTimeout>;
   if (transient) busyTimer = setTimeout(lockControls, 200);
   else lockControls();
-  try {
-    if (allowSaveFailure) await saving.catch(() => {});
-    else await saving;
-    const result = await action();
-    if (repo) {
-      try {
-        await fs.promises.flush();
-        for (const state of workspaceWarnings.values()) state.errors.delete("[workspace storage]");
-      } catch (error) {
-        if (meta) warningState(meta).errors.add("[workspace storage]");
-        throw error;
-      }
-    }
-    if (!quiet && !(result && typeof result === "object" && result.statusHandled)) {
-      if (result === false || !completion) dismissStatus();
-      else status(`${label} complete.`, "ready");
-    }
-  } catch (e) {
-    console.error(e);
-    const detail = e.name === "TimeoutError" ? "Request timed out. Check the connection and try again." : e.message || String(e);
-    status(`${label} failed: ${detail}`, "error");
-  } finally {
+  let released = false;
+  const finish = async () => {
+    if (released) return;
     if (meta && repo) await refreshWarning(meta, repo);
+    released = true;
+    if (releaseForeground === release) releaseForeground = null;
     clearTimeout(busyTimer);
     if (disabled) controls.forEach((c, i) => (c.disabled = disabled[i]));
     branchSelect.sync();
     busy = false;
     busyControlsShown = false;
-
     updateMergeRequestControls();
     updatePdfDownload();
     syncTree();
@@ -997,6 +980,39 @@ async function run(
     const searchPanel = $("project-search-panel");
     if (!editor.hasFocus() && (!searchPanel || !searchPanel.contains(document.activeElement))) restoreFocus(previousFocus);
     void processNavigation();
+  };
+  const flushWorkspace = async () => {
+    if (!repo) return;
+    try {
+      await fs.promises.flush();
+      for (const state of workspaceWarnings.values()) state.errors.delete("[workspace storage]");
+    } catch (error) {
+      if (meta) warningState(meta).errors.add("[workspace storage]");
+      throw error;
+    }
+  };
+  // Builds release their foreground lock once their source snapshot is immutable.
+  // Their eventual completion must not clean up a newer operation's controls or focus.
+  const release = async () => {
+    await flushWorkspace();
+    await finish();
+  };
+  releaseForeground = release;
+  try {
+    if (allowSaveFailure) await saving.catch(() => {});
+    else await saving;
+    const result = await action();
+    if (!released) await flushWorkspace();
+    if (!released && !quiet && !(result && typeof result === "object" && result.statusHandled)) {
+      if (result === false || !completion) dismissStatus();
+      else status(`${label} complete.`, "ready");
+    }
+  } catch (e) {
+    console.error(e);
+    const detail = e.name === "TimeoutError" ? "Request timed out. Check the connection and try again." : e.message || String(e);
+    status(`${label} failed: ${detail}`, "error");
+  } finally {
+    await finish();
   }
 }
 const sidebarTabs = [$("files-tab"), $("search-tab"), $("project-tab")];
@@ -1734,6 +1750,7 @@ async function navigateSync(direction: "forward" | "backward", position: SourceP
 }
 function updatePdfDownload() {
   $("download-pdf").disabled = busyControlsShown || !builtPdf;
+  $<HTMLButtonElement>("compile").disabled = busyControlsShown || buildingRepositories.has(repo?.dir);
   updateSyncControls();
 }
 function downloadBuiltPdf() {
@@ -1751,8 +1768,22 @@ function downloadBuiltPdf() {
   }
 }
 let activePdfBuilds = 0;
+const buildingRepositories = new Set<string>();
+let latestPdfBuild: ReturnType<typeof createBuildOperation> | null = null;
 async function buildDocument(): Promise<OperationResult> {
+  if (buildingRepositories.has(repo?.dir)) return { statusHandled: true };
+  const activeRepo = repo;
+  const release = releaseForeground;
   const operation = createBuildOperation();
+  latestPdfBuild = operation;
+  buildingRepositories.add(activeRepo.dir);
+  const current = () => activeRepo === repo && latestPdfBuild === operation;
+  let progressVersion: number;
+  const report = (message: string, state: StatusState) => {
+    if (!current() || (progressVersion !== undefined && progressVersion !== statusVersion)) return;
+    status(message, state);
+    progressVersion = statusVersion;
+  };
   const previous = { repo, pdf: builtPdf, synctex: syncBuild };
   let rendering = false;
   activePdfBuilds++;
@@ -1760,26 +1791,45 @@ async function buildDocument(): Promise<OperationResult> {
   $("publishing").disabled = true;
   $("cancel-build").onclick = () => {
     void operation.cancel().catch(() => {});
-    status("Canceling build…", "busy");
+    if (current()) {
+      status("Canceling build…", "busy");
+      progressVersion = statusVersion;
+    }
   };
-  status("Preparing document…", "busy");
+  report("Preparing document…", "busy");
   try {
-    return await compileDocument(operation, () => {
-      rendering = true;
-    });
+    await compileDocument(
+      operation,
+      () => {
+        rendering = true;
+      },
+      release,
+      current,
+      report,
+    );
+    report("Build complete.", "ready");
+    return { statusHandled: true };
   } catch (error) {
-    if (!operation.signal.aborted) throw error;
+    if (!current()) return { statusHandled: true };
+    if (!operation.signal.aborted) {
+      const detail = error.name === "TimeoutError" ? "Request timed out. Check the connection and try again." : error.message || String(error);
+      if (!$("log").textContent) updateLog(detail);
+      if (!builtPdf) selectOutputTab($("logs-tab"));
+      report(`Build failed: ${detail}`, "error");
+      return { statusHandled: true };
+    }
     try {
       await operation.cancel();
     } catch {
-      status("Build canceled locally. Server cancellation could not be confirmed.", "error");
+      report("Build canceled locally. Server cancellation could not be confirmed.", "error");
       return { statusHandled: true };
     }
-    if (rendering && previous.repo === repo) {
+    if (rendering && current()) {
       if (previous.pdf) await preview(previous.pdf, previous.synctex);
       else await pdfPreview.reset();
+      if (current()) builtPdf = previous.pdf;
     }
-    status("Build canceled.", "ready");
+    report("Build canceled.", "ready");
     return { statusHandled: true };
   } finally {
     if (toastBuildOperation === operation) {
@@ -1787,10 +1837,18 @@ async function buildDocument(): Promise<OperationResult> {
       $("cancel-build").hidden = true;
       $("cancel-build").onclick = null;
     }
+    buildingRepositories.delete(activeRepo.dir);
     $("publishing").disabled = --activePdfBuilds > 0;
+    updatePdfDownload();
   }
 }
-async function compileDocument(operation: ReturnType<typeof createBuildOperation>, onPreviewCommit: () => void): Promise<void | false> {
+async function compileDocument(
+  operation: ReturnType<typeof createBuildOperation>,
+  onPreviewCommit: () => void,
+  onSnapshot?: () => Promise<void>,
+  current: () => boolean = () => true,
+  report: (message: string, state: StatusState) => void = status,
+): Promise<void | false> {
   const signal = operation.signal;
   await saveDocument();
   signal.throwIfAborted();
@@ -1798,7 +1856,9 @@ async function compileDocument(operation: ReturnType<typeof createBuildOperation
   await saving;
   signal.throwIfAborted();
   if (activeRepo !== repo) return;
-  const progress = createFileOperationProgress((message) => status(message, "busy"));
+  const progress = createFileOperationProgress((message) => {
+    if (current()) report(message, "busy");
+  });
   progress({ phase: "preparing" });
   const paths = await activeRepo.files();
   signal.throwIfAborted();
@@ -1817,12 +1877,15 @@ async function compileDocument(operation: ReturnType<typeof createBuildOperation
   const body = JSON.stringify({ files, buildId: operation.id });
   validateRequestSize(body, serverConfig.limits);
   signal.throwIfAborted();
-  editor.setBusy(false);
+  if (onSnapshot) await onSnapshot();
+  else editor.setBusy(false);
+  signal.throwIfAborted();
+  if (activeRepo !== repo || !current()) return;
   progress({ phase: "compiling" });
   const response = await operation.request(body);
   const result = await response.json();
   signal.throwIfAborted();
-  if (activeRepo !== repo) return;
+  if (activeRepo !== repo || !current()) return;
   updateLog(result.log || result.error);
   if (!response.ok) {
     if (!builtPdf) selectOutputTab($("logs-tab"));
@@ -1830,7 +1893,8 @@ async function compileDocument(operation: ReturnType<typeof createBuildOperation
   }
   progress({ phase: "rendering" });
   const pdf = new Blob([decode64(result.pdf) as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
-  await preview(pdf, result.synctex || null, signal);
+  const committed = await preview(pdf, result.synctex || null, signal, report);
+  if (!committed || activeRepo !== repo || !current()) return;
   onPreviewCommit();
   signal.throwIfAborted();
   builtPdf = pdf;
@@ -2525,7 +2589,7 @@ $("sync-source-pdf").onclick = () => {
   updateSyncControls();
   if (syncActive) void navigateSync("forward", sourceSyncPosition());
 };
-async function preview(blob: Blob, build: string = null, signal?: AbortSignal) {
+async function preview(blob: Blob, build: string = null, signal?: AbortSignal, report?: (message: string, state: StatusState) => void) {
   signal?.throwIfAborted();
   cancelSync();
   syncError = "";
@@ -2543,11 +2607,12 @@ async function preview(blob: Blob, build: string = null, signal?: AbortSignal) {
   };
   signal?.addEventListener("abort", abort, { once: true });
   try {
-    await pdfPreview.show(blob, signal);
+    await pdfPreview.show(blob, signal, report);
     signal?.throwIfAborted();
-    if (generation !== syncGeneration) return;
+    if (generation !== syncGeneration) return false;
     syncBuild = build;
     updateSyncControls();
+    return true;
   } catch (error) {
     if (generation === syncGeneration) {
       syncBuild = previousSyncBuild;

@@ -165,7 +165,17 @@ test("build waits for save before collecting files", async () => {
   const saved = new Promise((resolve) => {
     release = resolve;
   });
-  const run = new AsyncFunction("operation", "saveDocument", "repo", "saving", "createFileOperationProgress", "status", preflight + 'return "snapshot";');
+  const run = new AsyncFunction(
+    "operation",
+    "saveDocument",
+    "repo",
+    "saving",
+    "createFileOperationProgress",
+    "status",
+    "current = () => true",
+    "report = status",
+    preflight + 'return "snapshot";',
+  );
   const pending = run(
     operation,
     async () => {
@@ -175,8 +185,8 @@ test("build waits for save before collecting files", async () => {
     },
     {},
     Promise.resolve(),
-    () => () => calls.push("prepare"),
-    () => {},
+    (report) => (progress) => report(progress.phase),
+    () => calls.push("prepare"),
   );
   assert.deepEqual(calls, ["save"]);
   release();

@@ -22,17 +22,26 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+let repositorySequence = 0;
+function repository() {
+  return { dir: `/workspace-${++repositorySequence}` };
+}
 function fixture(compileDocument, { cancellation = Promise.resolve(), pdf = null, synctex = null } = {}) {
   const button = { disabled: false };
   const cancelButton = { hidden: true, onclick: null };
+  const log = { textContent: "" };
+  const logsTab = {};
+  const selectedTabs = [];
+  let downloadUpdates = 0;
   const statuses = [];
   const operations = [];
   const previews = [];
   let resets = 0;
   const context = vm.createContext({
     $: (id) => {
-      assert.ok(id === "publishing" || id === "cancel-build");
-      return id === "publishing" ? button : cancelButton;
+      const elements = { publishing: button, "cancel-build": cancelButton, log, "logs-tab": logsTab };
+      assert.ok(Object.hasOwn(elements, id));
+      return elements[id];
     },
     createBuildOperation: () => {
       const controller = new AbortController();
@@ -52,11 +61,21 @@ function fixture(compileDocument, { cancellation = Promise.resolve(), pdf = null
       operations.push(operation);
       return operation;
     },
-    repo: {},
+    releaseForeground: null,
+    updatePdfDownload: () => {
+      downloadUpdates++;
+    },
+    updateLog: (text) => {
+      log.textContent = text;
+    },
+    selectOutputTab: (tab) => selectedTabs.push(tab),
+    repo: repository(),
     builtPdf: pdf,
     syncBuild: synctex,
     toastBuildOperation: null,
+    statusVersion: 0,
     status: (text, state) => {
+      context.statusVersion++;
       statuses.push({ text, state });
       cancelButton.hidden = state !== "busy" || !context.toastBuildOperation || context.toastBuildOperation.signal.aborted;
     },
@@ -75,6 +94,12 @@ function fixture(compileDocument, { cancellation = Promise.resolve(), pdf = null
     button,
     cancelButton,
     statuses,
+    log,
+    logsTab,
+    selectedTabs,
+    get downloadUpdates() {
+      return downloadUpdates;
+    },
     operations,
     previews,
     context,
@@ -95,8 +120,144 @@ function assertFinished(f) {
   assert.equal(f.cancelButton.onclick, null);
   assert.equal(f.context.toastBuildOperation, null);
 }
-function assertCancellationHandled(result) {
-  assert.equal(result?.statusHandled, true, "cancellation must suppress the caller's generic success status");
+function assertStatusHandled(result) {
+  assert.equal(result?.statusHandled, true, "the build must suppress the caller's generic status");
+}
+const assertCancellationHandled = assertStatusHandled;
+
+test("duplicate builds in the same repository are suppressed until the build finishes", async () => {
+  const compile = deferred();
+  const f = fixture(() => compile.promise);
+  const building = f.build();
+  const cancel = f.cancelButton.onclick;
+  const statuses = [...f.statuses];
+  assertStatusHandled(await f.build());
+  assert.equal(f.operations.length, 1);
+  assert.equal(f.button.disabled, true);
+  assert.equal(f.cancelButton.onclick, cancel);
+  assert.deepEqual(f.statuses, statuses);
+  assert.equal(f.downloadUpdates, 0);
+  compile.resolve();
+  assertStatusHandled(await building);
+  assertFinished(f);
+  assertStatusHandled(await f.build());
+  assert.equal(f.operations.length, 2, "completion must allow another build in the same repository");
+  assert.equal(f.downloadUpdates, 2);
+  assertFinished(f);
+});
+
+test("reactivating the same directory suppresses duplicate builds across repository objects", async () => {
+  const compile = deferred();
+  const f = fixture(() => compile.promise);
+  const originalRepository = f.context.repo;
+  const building = f.build();
+  f.context.repo = { dir: originalRepository.dir };
+  assert.notEqual(f.context.repo, originalRepository);
+  const statuses = [...f.statuses];
+  assertStatusHandled(await f.build());
+  assert.equal(f.operations.length, 1);
+  assert.deepEqual(f.statuses, statuses);
+  assert.equal(f.button.disabled, true);
+  assert.equal(f.downloadUpdates, 0);
+  compile.resolve();
+  assertStatusHandled(await building);
+  assert.deepEqual(f.statuses, statuses, "the original repository object no longer owns the status");
+  assertFinished(f);
+  assertStatusHandled(await f.build());
+  assert.equal(f.operations.length, 2, "finishing must release the directory key");
+  assertFinished(f);
+});
+
+for (const outcome of ["completion", "failure", "cancel"]) {
+  test(`late build progress and ${outcome} preserve a newer foreground status`, async () => {
+    const compile = deferred();
+    let report;
+    const f = fixture((operation, onPreviewCommit, onSnapshot, current, reportStatus) => {
+      report = reportStatus;
+      return compile.promise;
+    });
+    const building = f.build();
+    report("Compiling document…", "busy");
+    assert.deepEqual(f.statuses.at(-1), { text: "Compiling document…", state: "busy" });
+    if (outcome === "cancel") f.cancelButton.onclick();
+    f.context.status("Changes published.", "ready");
+    const statuses = [...f.statuses];
+    const version = f.context.statusVersion;
+    report("Rendering document…", "busy");
+    assert.deepEqual(f.statuses, statuses);
+    assert.equal(f.context.statusVersion, version);
+    if (outcome === "completion") compile.resolve();
+    else compile.reject(outcome === "cancel" ? f.operations[0].signal.reason : new Error("Compilation failed"));
+    assertStatusHandled(await building);
+    assert.deepEqual(f.statuses, statuses);
+    assert.equal(f.context.statusVersion, version);
+    assert.equal(f.downloadUpdates, 1);
+    assertFinished(f);
+  });
+}
+
+test("build passes the captured foreground release and repository-aware ownership callback", async () => {
+  const compile = deferred();
+  let snapshot, current;
+  const f = fixture((operation, onPreviewCommit, onSnapshot, isCurrent) => {
+    snapshot = onSnapshot;
+    current = isCurrent;
+    return compile.promise;
+  });
+  const release = async () => {};
+  f.context.releaseForeground = release;
+  const originalRepository = f.context.repo;
+  const building = f.build();
+  assert.equal(snapshot, release);
+  assert.equal(current(), true);
+  f.context.repo = repository();
+  assert.equal(current(), false);
+  f.context.repo = originalRepository;
+  assert.equal(current(), true);
+  compile.resolve();
+  assertStatusHandled(await building);
+  assertFinished(f);
+});
+
+for (const outcome of ["failure", "cancel"]) {
+  test(`stale build ${outcome} does not overwrite the latest build status or preview`, async () => {
+    const first = deferred();
+    const second = deferred();
+    let calls = 0;
+    const f = fixture(
+      (operation, onPreviewCommit) => {
+        if (++calls === 1) {
+          onPreviewCommit();
+          return first.promise;
+        }
+        return second.promise;
+      },
+      { pdf: new Blob(["previous PDF"]), synctex: "previous-build" },
+    );
+    const one = f.build();
+    const oldCurrent = f.cancelButton.onclick;
+    if (outcome === "cancel") oldCurrent();
+    f.context.repo = repository();
+    const two = f.build();
+    const cancelLatest = f.cancelButton.onclick;
+    const statuses = [...f.statuses];
+    first.reject(outcome === "cancel" ? f.operations[0].signal.reason : new Error("Stale compilation failed"));
+    assertStatusHandled(await one);
+    assert.deepEqual(f.statuses, statuses);
+    assert.equal(f.log.textContent, "");
+    assert.deepEqual(f.selectedTabs, []);
+    assert.deepEqual(f.previews, []);
+    assert.equal(f.resets, 0);
+    assert.equal(f.cancelButton.onclick, cancelLatest);
+    assert.equal(f.context.toastBuildOperation, f.operations[1]);
+    assert.equal(f.button.disabled, true);
+    assert.equal(f.downloadUpdates, 1);
+    second.resolve();
+    assertStatusHandled(await two);
+    assert.deepEqual(f.statuses.at(-1), { text: "Build complete.", state: "ready" });
+    assert.equal(f.downloadUpdates, 2);
+    assertFinished(f);
+  });
 }
 
 test("Publish changes stays disabled throughout the PDF build and re-enables on completion", async () => {
@@ -109,7 +270,9 @@ test("Publish changes stays disabled throughout the PDF build and re-enables on 
   assert.equal(f.context.toastBuildOperation, f.operations[0]);
   assert.deepEqual(f.statuses, [{ text: "Preparing document…", state: "busy" }]);
   compile.resolve();
-  assert.equal(await building, undefined);
+  assertStatusHandled(await building);
+  assert.deepEqual(f.statuses.at(-1), { text: "Build complete.", state: "ready" });
+  assert.equal(f.downloadUpdates, 1);
   assertFinished(f);
 });
 
@@ -118,11 +281,16 @@ test("failed or canceled builds re-enable Publish changes", async () => {
   const f = fixture(async () => {
     throw error;
   });
-  await assert.rejects(f.build(), (failure) => failure === error);
+  assertStatusHandled(await f.build());
+  assert.deepEqual(f.statuses.at(-1), { text: "Build failed: Compilation failed", state: "error" });
+  assert.equal(f.log.textContent, error.message);
+  assert.deepEqual(f.selectedTabs, [f.logsTab]);
+  assert.equal(f.downloadUpdates, 1);
   assertFinished(f);
   assert.equal(f.operations[0].signal.aborted, false);
   const canceled = fixture(async () => false);
-  assert.equal(await canceled.build(), false);
+  assertStatusHandled(await canceled.build());
+  assert.deepEqual(canceled.statuses.at(-1), { text: "Build complete.", state: "ready" });
   assertFinished(canceled);
 });
 
@@ -132,6 +300,7 @@ test("overlapping builds do not re-enable publishing until both have finished", 
   const queue = [first, second];
   const f = fixture(() => queue.shift().promise);
   const one = f.build();
+  f.context.repo = repository();
   const two = f.build();
   const cancelLatest = f.cancelButton.onclick;
   first.resolve();
@@ -231,7 +400,7 @@ test("canceling rendering does not restore a preview into a different repository
     { pdf: new Blob(["previous PDF"]), synctex: "previous-build" },
   );
   const building = f.build();
-  f.context.repo = {};
+  f.context.repo = repository();
   f.cancelButton.onclick();
   assertCancellationHandled(await building);
   assert.deepEqual(f.previews, []);
@@ -244,6 +413,7 @@ test("canceling the latest overlapping build keeps publishing disabled until the
   let calls = 0;
   const f = fixture((operation) => (++calls === 1 ? first.promise : pendingCompile(operation)));
   const one = f.build();
+  f.context.repo = repository();
   const two = f.build();
   f.cancelButton.onclick();
   assert.equal(f.operations[0].signal.aborted, false);

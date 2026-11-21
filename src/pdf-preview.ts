@@ -43,7 +43,7 @@ export interface Preview {
   setSyncEnabled(value: boolean): void;
   goToPosition(position: PreviewPosition): boolean;
   reset(): Promise<void>;
-  show(blob: Blob, signal?: AbortSignal): Promise<void>;
+  show(blob: Blob, signal?: AbortSignal, reportProgress?: (message: string, state: "error" | "busy" | "ready") => void): Promise<void>;
 }
 
 import { getDocument, GlobalWorkerOptions, TextLayer } from "pdfjs-dist/build/pdf.mjs";
@@ -127,8 +127,8 @@ export function createPreview(
         return false;
       },
       async reset() {},
-      async show() {
-        report(error.message, "error");
+      async show(_blob: Blob, _signal?: AbortSignal, reportProgress = report) {
+        reportProgress(error.message, "error");
         throw error;
       },
     };
@@ -660,7 +660,7 @@ export function createPreview(
     setSyncEnabled,
     goToPosition,
     reset,
-    async show(blob: Blob, signal?: AbortSignal) {
+    async show(blob: Blob, signal?: AbortSignal, reportProgress = report) {
       signal?.throwIfAborted();
       const current = ++loadGeneration;
       void cancelPending?.();
@@ -678,7 +678,7 @@ export function createPreview(
       cancelPending = discard;
       signal?.addEventListener("abort", abort, { once: true });
       if (!document) empty.textContent = "Loading PDF preview…";
-      report("Loading PDF preview…", "busy");
+      reportProgress("Loading PDF preview…", "busy");
       try {
         const data = new Uint8Array(await blob.arrayBuffer());
         if (stale()) return;
@@ -756,7 +756,7 @@ export function createPreview(
         container.scrollTop = 0;
         resize();
         pages.forEach((page) => observer.observe(page.element));
-        report(`PDF preview ready (${pdf.numPages} pages).`, "ready");
+        reportProgress(`PDF preview ready (${pdf.numPages} pages).`, "ready");
       } catch (error) {
         if (stale()) return;
         if (!document) empty.textContent = `PDF preview failed: ${error.message}`;
