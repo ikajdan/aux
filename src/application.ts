@@ -991,7 +991,7 @@ async function run(
       throw error;
     }
   };
-  // Builds release their foreground lock once their source snapshot is immutable.
+  // Snapshot-based operations can release their foreground lock before finishing.
   // Their eventual completion must not clean up a newer operation's controls or focus.
   const release = async () => {
     await flushWorkspace();
@@ -1274,10 +1274,27 @@ function renderCatalog() {
   );
   catalogView.render(catalog, customRepositories, lastRepositoriesRefresh);
 }
+async function finishDownload(prepare: () => void | Promise<void>, label: string, release: () => Promise<void>): Promise<OperationResult> {
+  const progressVersion = statusVersion;
+  await release?.();
+  try {
+    await prepare();
+    if (progressVersion === statusVersion) status(`${label} complete.`, "ready");
+  } catch (error) {
+    console.error(error);
+    if (progressVersion === statusVersion) status(`${label} failed: ${error.message || String(error)}`, "error");
+  }
+  return { statusHandled: true };
+}
 async function downloadFile(path: string) {
   if (!path) return;
+  const activeRepo = repo;
+  const release = releaseForeground;
+  const name = path.split("/").pop();
   if (path === file && !(await resolveEditorDraft())) return false;
-  downloadBlob(new Blob([(await fs.promises.readFile(`${repo.dir}/${path}`)) as Uint8Array<ArrayBuffer>]), path.split("/").pop());
+  await saving;
+  const bytes = new Uint8Array(await fs.promises.readFile(`${activeRepo.dir}/${path}`));
+  return finishDownload(() => downloadBlob(new Blob([bytes]), name), "Download", release);
 }
 function treePathWritable(path: string) {
   if (!repo || !path) return false;
@@ -1292,18 +1309,27 @@ let treeMenu: HTMLDivElement;
 let treeMenuOrigin: HTMLElement;
 let treeClipboard: { dir: string; path: string; type: "copy" | "cut" };
 async function downloadProject() {
-  if (!(await resolveEditorDraft())) return false;
+  const activeRepo = repo;
+  const release = releaseForeground;
   let name = project?.path || "document";
+  if (!(await resolveEditorDraft())) return false;
+  await saving;
   name = name.replace(/[\\/\\\\\x00-\x1f<>:"|?*]/g, "-").replace(/[. ]+$/g, "");
   if (!name || name === "." || name === ".." || name.toLowerCase() === ".git") name = "document";
   safePath(name);
   const entries = Object.create(null);
   entries[`${name}/`] = new Uint8Array();
-  const [paths, directories] = await Promise.all([repo.files(), repo.directories()]);
+  const [paths, directories] = await Promise.all([activeRepo.files(), activeRepo.directories()]);
   for (const path of directories) entries[`${name}/${safePath(path)}/`] = new Uint8Array();
-  for (const path of paths) entries[`${name}/${safePath(path)}`] = new Uint8Array(await repo.p.readFile(`${repo.dir}/${path}`));
-  const bytes = await createProjectZip(entries);
-  downloadBlob(new Blob([bytes], { type: "application/zip" }), `${name}.zip`);
+  for (const path of paths) entries[`${name}/${safePath(path)}`] = new Uint8Array(await activeRepo.p.readFile(`${activeRepo.dir}/${path}`));
+  return finishDownload(
+    async () => {
+      const bytes = await createProjectZip(entries);
+      downloadBlob(new Blob([bytes], { type: "application/zip" }), `${name}.zip`);
+    },
+    "Download project",
+    release,
+  );
 }
 function setTreeClipboard(path: string, type: "copy" | "cut") {
   safePath(path);
