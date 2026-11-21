@@ -242,7 +242,7 @@ textarea:focus {
     gap: var(--space-3);
     min-width: 0;
 }
-.repository-group + .repository-group {
+#repos > :not([hidden]) + .repository-group {
     margin-top: var(--space-5);
 }
 .repository-group-heading {
