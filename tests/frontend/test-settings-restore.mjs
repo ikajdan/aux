@@ -6,7 +6,14 @@ import { test } from "node:test";
 import vm from "node:vm";
 import { build } from "esbuild";
 
-const settingsBundle = await build({ entryPoints: ["src/ui/settings.ts"], bundle: true, write: false, format: "iife", globalName: "settingsUI", platform: "browser" });
+const settingsBundle = await build({
+  entryPoints: ["src/ui/settings.ts"],
+  bundle: true,
+  write: false,
+  format: "iife",
+  globalName: "settingsUI",
+  platform: "browser",
+});
 const bundledTheme = await build({ entryPoints: ["src/ui/theme.ts"], bundle: true, write: false, format: "esm", platform: "node" });
 const { createThemeController } = await import(`data:text/javascript;base64,${Buffer.from(bundledTheme.outputFiles[0].text).toString("base64")}`);
 const keys = ["token", "author", "email"];
@@ -29,17 +36,38 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
       "custom-repositories-status",
       "settings-title-text",
       "connection-dialog",
-    ].map((id) => [id, {
-      dataset: {},
-      validity: { valid: true },
-      value: keys.includes(id) ? original[id] : id === "custom-repositories" ? "group/opening" : "",
-      textContent: "",
-      hidden: true,
-      attributes: new Map(),
-      removeAttribute(name) { this.attributes.delete(name); },
-      hasAttribute(name) { return this.attributes.has(name); },
-      setAttribute(name, value) { this.attributes.set(name, value); },
-    }]),
+      "connection-form",
+      "save-settings",
+      "restore-settings",
+      "app-menu",
+      "setup-dialog",
+    ].map((id) => [
+      id,
+      {
+        dataset: {},
+        disabled: false,
+        listeners: new Map(),
+        addEventListener(type, handler) {
+          const handlers = this.listeners.get(type) || [];
+          handlers.push(handler);
+          this.listeners.set(type, handlers);
+        },
+        validity: { valid: true },
+        value: keys.includes(id) ? original[id] : id === "custom-repositories" ? "group/opening" : "",
+        textContent: "",
+        hidden: true,
+        attributes: new Map(),
+        removeAttribute(name) {
+          this.attributes.delete(name);
+        },
+        hasAttribute(name) {
+          return this.attributes.has(name);
+        },
+        setAttribute(name, value) {
+          this.attributes.set(name, value);
+        },
+      },
+    ]),
   );
   let modalOpens = 0;
   elements["connection-dialog"].open = false;
@@ -86,10 +114,11 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
       statuses.push([text, state]);
       elements["connection-status"].textContent = text;
     },
-    renderCatalog: () => catalogStates.push({
-      token: context.settings.token,
-      repositories: plain(context.customRepositories),
-    }),
+    renderCatalog: () =>
+      catalogStates.push({
+        token: context.settings.token,
+        repositories: plain(context.customRepositories),
+      }),
     refreshDocuments: async () => {
       refreshes++;
       if (refreshFailure) throw refreshFailure;
@@ -98,21 +127,33 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
     console: { warn: (...args) => warnings.push(args) },
   });
   context.theme = createThemeController({
-    root: { dataset: {} }, groups: [], savedThemeValue: "light",
+    root: { dataset: {} },
+    groups: [],
+    savedThemeValue: "light",
     media: () => ({ matches: false, addEventListener() {} }),
-    storage: context.localStorage, setupStatus: {}, reportSettingsError() {},
+    storage: context.localStorage,
+    setupStatus: {},
+    reportSettingsError() {},
   });
   context.theme.connectEditor((value) => appliedThemes.push(value));
   appliedThemes.length = 0;
   context.document = { getElementById: context.$ };
   vm.runInContext(settingsBundle.outputFiles[0].text, context);
   const controller = context.settingsUI.createSettingsController({
-    initialSettings: context.settings, theme: context.theme,
+    initialSettings: context.settings,
+    theme: context.theme,
     getCustomRepositories: () => context.customRepositories,
-    setCustomRepositories: (value) => { context.customRepositories = value; },
-    saveCustomRepositories: async () => {}, refreshDocuments: context.refreshDocuments,
-    renderCatalog: context.renderCatalog, updatePageTitle: context.updatePageTitle,
-    isBusy: () => false, run: async (action) => action(), validateToken: async () => ({ id: 1 }), status() {},
+    setCustomRepositories: (value) => {
+      context.customRepositories = value;
+    },
+    saveCustomRepositories: async () => {},
+    refreshDocuments: context.refreshDocuments,
+    renderCatalog: context.renderCatalog,
+    updatePageTitle: context.updatePageTitle,
+    isBusy: () => false,
+    run: async (action) => action(),
+    validateToken: async () => ({ id: 1 }),
+    status() {},
   });
   Object.defineProperty(context, "settings", { get: () => controller.values, set: (value) => controller.setValues(value) });
   context.openConnection = controller.openConnection;
@@ -122,7 +163,9 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
   let statusText = "";
   Object.defineProperty(elements["connection-status"], "textContent", {
     get: () => statusText,
-    set: (text) => { statusText = text; },
+    set: (text) => {
+      statusText = text;
+    },
   });
   Object.defineProperty(elements["connection-status"].dataset, "state", {
     set: (state) => statuses.push([statusText, state]),
@@ -140,15 +183,38 @@ function fixture({ capture = true, storedSettings = JSON.stringify(original) } =
       warnings.length = 0;
     },
   };
+  controller.installUI();
+  function dispatch(id, type, event = {}) {
+    for (const handler of elements[id].listeners.get(type) || []) handler(event);
+    if (id !== "connection-dialog" && type !== "blur") {
+      for (const handler of elements["connection-dialog"].listeners.get(type) || []) handler(event);
+    }
+  }
   if (capture) context.openConnection();
   return {
-    context, elements, storage, accesses, statuses, warnings, appliedThemes, catalogStates,
+    context,
+    elements,
+    storage,
+    accesses,
+    statuses,
+    warnings,
+    appliedThemes,
+    catalogStates,
+    dispatch,
     restore: () => context.restoreSettings(),
     open: () => context.openConnection(),
-    failStorage: (failure) => { storageFailure = failure; },
-    failRefresh: () => { refreshFailure = new Error("Catalog offline"); },
-    get refreshes() { return refreshes; },
-    get modalOpens() { return modalOpens; },
+    failStorage: (failure) => {
+      storageFailure = failure;
+    },
+    failRefresh: () => {
+      refreshFailure = new Error("Catalog offline");
+    },
+    get refreshes() {
+      return refreshes;
+    },
+    get modalOpens() {
+      return modalOpens;
+    },
   };
 }
 
@@ -166,6 +232,70 @@ function assertNoRefresh(f) {
   assert.equal(f.refreshes, 0);
   assert.deepEqual(f.catalogStates, []);
 }
+
+test("Restore is disabled on opening and reopening with a new baseline", () => {
+  const f = fixture();
+  assert.equal(f.elements["restore-settings"].disabled, true);
+  autosave(f, { author: "New baseline" });
+  f.dispatch("author", "change");
+  assert.equal(f.elements["restore-settings"].disabled, false);
+  f.elements["connection-dialog"].open = false;
+  f.open();
+  assert.equal(f.elements["restore-settings"].disabled, true);
+});
+
+test("input differences enable Restore and manual reversion disables it", () => {
+  const f = fixture();
+  for (const key of keys) {
+    f.elements[key].value = "draft";
+    f.dispatch(key, "input");
+    assert.equal(f.elements["restore-settings"].disabled, false, key);
+    f.elements[key].value = original[key];
+    f.dispatch(key, "input");
+    assert.equal(f.elements["restore-settings"].disabled, true, key);
+  }
+});
+
+test("repository input and theme click/keyboard bubbling update Restore", async () => {
+  const f = fixture();
+  f.elements["custom-repositories"].value = "group/draft";
+  f.dispatch("custom-repositories", "input");
+  assert.equal(f.elements["restore-settings"].disabled, false);
+  f.elements["custom-repositories"].value = "group/opening";
+  f.dispatch("custom-repositories", "change");
+  assert.equal(f.elements["restore-settings"].disabled, true);
+  f.context.theme.selectTheme("dark");
+  f.dispatch("connection-dialog", "keydown", { key: "ArrowRight" });
+  assert.equal(f.elements["restore-settings"].disabled, false);
+  f.context.theme.selectTheme("light");
+  f.dispatch("connection-dialog", "click");
+  assert.equal(f.elements["restore-settings"].disabled, true);
+  f.context.theme.selectTheme("dark");
+  f.dispatch("connection-dialog", "click");
+  await f.restore();
+  assert.equal(f.elements["restore-settings"].disabled, true);
+});
+
+test("blur autosave keeps Restore enabled when the input is manually reverted", async () => {
+  const f = fixture();
+  f.elements.author.value = "Autosaved Author";
+  f.dispatch("author", "blur");
+  assert.equal(f.context.settings.author, "Autosaved Author");
+  assert.equal(f.elements["restore-settings"].disabled, false);
+  f.elements.author.value = original.author;
+  f.dispatch("author", "input");
+  assert.equal(f.elements["restore-settings"].disabled, false);
+  await f.restore();
+  assert.equal(f.elements["restore-settings"].disabled, true);
+});
+
+test("setValues recalculates Restore for persisted changes without input events", () => {
+  const f = fixture();
+  f.context.settings = { ...original, author: "Updated" };
+  assert.equal(f.elements["restore-settings"].disabled, false);
+  f.context.settings = { ...original };
+  assert.equal(f.elements["restore-settings"].disabled, true);
+});
 
 test("opening Settings captures a detached snapshot only for a new dialog session", async () => {
   const f = fixture();
@@ -269,7 +399,10 @@ test("Restore refreshes an autosaved token even when its input was reverted with
   const f = fixture();
   autosave(f, { token: "saved-token" });
   f.elements.token.value = original.token;
+  f.dispatch("token", "input");
+  assert.equal(f.elements["restore-settings"].disabled, false);
   await f.restore();
+  assert.equal(f.elements["restore-settings"].disabled, true);
   assert.equal(f.context.settings.token, original.token);
   assert.equal(f.refreshes, 1);
   assert.equal(f.catalogStates.length, 1);
@@ -288,6 +421,7 @@ for (const operation of ["get", "set"]) {
     const stored = f.storage.get("aux-settings");
     f.failStorage((method, key) => method === operation && key === "aux-settings");
     assert.equal(await f.restore(), false);
+    assert.equal(f.elements["restore-settings"].disabled, false);
     assert.equal(f.context.settings, settings);
     assert.deepEqual(plain(settings), before);
     assert.equal(f.context.customRepositories, repositories);
@@ -302,7 +436,7 @@ for (const operation of ["get", "set"]) {
   });
 }
 
-for (const previous of ["{\"token\":\"previous raw value\"}", null]) {
+for (const previous of ['{"token":"previous raw value"}', null]) {
   test(`theme persistence failure restores the previous aux-settings key (${previous === null ? "absent" : "present"})`, async () => {
     const f = fixture();
     autosave(f, { token: "saved-token", customRepositories: ["group/saved"] });
@@ -361,10 +495,21 @@ test("theme initializes the dataset before connecting the editor and follows sys
   const root = { dataset: {} };
   const applied = [];
   let onChange;
-  const system = { matches: true, addEventListener(type, listener) { assert.equal(type, "change"); onChange = listener; } };
+  const system = {
+    matches: true,
+    addEventListener(type, listener) {
+      assert.equal(type, "change");
+      onChange = listener;
+    },
+  };
   const theme = createThemeController({
-    root, groups: [], savedThemeValue: "invalid", media: () => system,
-    storage: { setItem() {} }, setupStatus: {}, reportSettingsError() {},
+    root,
+    groups: [],
+    savedThemeValue: "invalid",
+    media: () => system,
+    storage: { setItem() {} },
+    setupStatus: {},
+    reportSettingsError() {},
   });
   assert.equal(root.dataset.theme, "system");
   assert.deepEqual(applied, []);
@@ -384,28 +529,52 @@ test("theme keyboard controls synchronize groups and persistence failures retain
   const setupStatus = { textContent: "old" };
   const groups = [false, true].map((setup) => {
     const buttons = ["light", "dark", "system"].map((value) => ({
-      dataset: { themeChoice: value }, attributes: {}, focused: false,
-      setAttribute(key, value) { this.attributes[key] = value; },
-      focus() { this.focused = true; },
+      dataset: { themeChoice: value },
+      attributes: {},
+      focused: false,
+      setAttribute(key, value) {
+        this.attributes[key] = value;
+      },
+      focus() {
+        this.focused = true;
+      },
     }));
     return { dataset: {}, buttons, querySelectorAll: () => buttons, closest: () => setup };
   });
   const theme = createThemeController({
-    root: { dataset: {} }, groups, savedThemeValue: "light",
+    root: { dataset: {} },
+    groups,
+    savedThemeValue: "light",
     media: () => ({ matches: false, addEventListener() {} }),
-    storage: { setItem() { if (fail) throw new Error("blocked"); } },
-    setupStatus, reportSettingsError: (message) => errors.push(message),
+    storage: {
+      setItem() {
+        if (fail) throw new Error("blocked");
+      },
+    },
+    setupStatus,
+    reportSettingsError: (message) => errors.push(message),
   });
   theme.connectEditor(() => {});
   let prevented = false;
-  groups[0].buttons[0].onkeydown({ key: "ArrowLeft", preventDefault() { prevented = true; } });
+  groups[0].buttons[0].onkeydown({
+    key: "ArrowLeft",
+    preventDefault() {
+      prevented = true;
+    },
+  });
   assert.equal(prevented, true);
   assert.equal(theme.selectedTheme, "system");
   assert.equal(groups[0].buttons[2].focused, true);
   for (const group of groups) {
     assert.equal(group.dataset.activeIndex, "2");
-    assert.deepEqual(group.buttons.map((button) => button.tabIndex), [-1, -1, 0]);
-    assert.deepEqual(group.buttons.map((button) => button.attributes["aria-checked"]), ["false", "false", "true"]);
+    assert.deepEqual(
+      group.buttons.map((button) => button.tabIndex),
+      [-1, -1, 0],
+    );
+    assert.deepEqual(
+      group.buttons.map((button) => button.attributes["aria-checked"]),
+      ["false", "false", "true"],
+    );
   }
   fail = true;
   const warn = console.warn;
@@ -413,7 +582,9 @@ test("theme keyboard controls synchronize groups and persistence failures retain
   try {
     groups[0].buttons[0].onclick();
     groups[1].buttons[0].onclick();
-  } finally { console.warn = warn; }
+  } finally {
+    console.warn = warn;
+  }
   assert.equal(theme.selectedTheme, "system");
   assert.deepEqual(errors, ["Could not save appearance. Try again."]);
   assert.equal(setupStatus.textContent, "Could not save appearance. Try again.");

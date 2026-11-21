@@ -40,6 +40,7 @@ function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = 
       "restore-settings",
       "connection-dialog",
       "connection-status",
+      "settings-title-text",
       "app-menu",
       "custom-repositories",
       "custom-repositories-status",
@@ -57,7 +58,12 @@ function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = 
         value: "",
         validity: { valid: true },
         attributes: new Set(),
-        addEventListener() {},
+        listeners: new Map(),
+        addEventListener(type, handler) {
+          const handlers = this.listeners.get(type) || [];
+          handlers.push(handler);
+          this.listeners.set(type, handlers);
+        },
         removeAttribute(name) {
           this.attributes.delete(name);
         },
@@ -69,6 +75,16 @@ function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = 
       }),
     ]),
   );
+  elements["connection-dialog"].showModal = function () {
+    this.open = true;
+  };
+  function dispatch(id, type, event = {}) {
+    elements[id][`on${type}`]?.(event);
+    for (const handler of elements[id].listeners.get(type) || []) handler(event);
+    if (id !== "connection-dialog" && type !== "blur") {
+      for (const handler of elements["connection-dialog"].listeners.get(type) || []) handler(event);
+    }
+  }
   const statuses = [];
   const runs = [];
   let repositorySaves = 0;
@@ -129,6 +145,8 @@ function fixture({ invalid = false, failed = false, repositoryFeedback = "" } = 
   }
   return {
     elements,
+    dispatch,
+    open: () => controller.openConnection(),
     statuses,
     focused,
     runs,
@@ -151,11 +169,11 @@ test("Settings has one form-linked Save button in a persistent footer", async ()
   assert.match(footer, /^\s*<div class="settings-feedback">/);
   assert.match(
     footer,
-    /<button id="restore-settings" type="button"[^>]*>Restore changes<\/button>\s*<button id="save-settings" class="primary" type="submit" form="connection-form">Save settings<\/button>\s*$/,
+    /<button id="restore-settings" type="button"[^>]*>\s*Restore changes\s*<\/button>\s*<button id="save-settings" class="primary" type="submit" form="connection-form">Save settings<\/button>\s*$/,
   );
   assert.equal((html.match(/id="save-settings"/g) || []).length, 1);
   assert.match(html, /class="settings-feedback">\s*<p id="connection-status"[^>]*><\/p>\s*<p id="custom-repositories-status"/);
-  assert.match(html, /<button id="restore-settings" type="button"[^>]*>Restore changes<\/button>/);
+  assert.match(html, /<button id="restore-settings" type="button"[^>]*\bdisabled[^>]*>\s*Restore changes\s*<\/button>/);
   const css = await readFile("src/styles/global-ui.css", "utf8");
   assert.match(css, /#connection-dialog > \.settings-footer\s*\{[^}]*flex-shrink: 0;[^}]*border-top:/);
   assert.match(css, /#connection-dialog \.settings-feedback > p\s*\{\s*margin: 0;/);
@@ -191,25 +209,33 @@ test("an existing field-save failure suppresses success and repository saving", 
   assert.ok(f.statuses.every(([text]) => text === "Could not save settings. Try again."));
 });
 
-test("submitting uses the guarded operation and prevents repeated clicks", async () => {
+test("Save remains permitted with Restore disabled and guards both buttons while pending", async () => {
   const f = fixture();
+  f.open();
+  assert.equal(f.elements["restore-settings"].disabled, true);
+  assert.equal(f.elements["save-settings"].disabled, false);
+  f.dispatch("restore-settings", "click");
+  assert.equal(f.runs.length, 0);
   let prevented = 0;
   const event = {
     preventDefault() {
       prevented++;
     },
   };
-  f.elements["connection-form"].onsubmit(event);
+  f.dispatch("connection-form", "submit", event);
   assert.equal(f.elements["save-settings"].disabled, true);
   assert.equal(f.elements["restore-settings"].disabled, true);
-  f.elements["connection-form"].onsubmit(event);
+  f.dispatch("restore-settings", "click");
+  f.dispatch("connection-dialog", "input");
+  assert.equal(f.elements["restore-settings"].disabled, true);
+  f.dispatch("connection-form", "submit", event);
   assert.equal(f.runs.length, 1);
   assert.equal(f.runs[0][1], "Save settings");
   assert.equal(f.runs[0][4].allowSaveFailure, true);
   await f.pending;
   await Promise.resolve();
   assert.equal(f.elements["save-settings"].disabled, false);
-  assert.equal(f.elements["restore-settings"].disabled, false);
+  assert.equal(f.elements["restore-settings"].disabled, true);
   assert.equal(prevented, 2);
 });
 
