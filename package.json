@@ -19,7 +19,7 @@
     "test:frontend": "node --test tests/frontend/*.mjs",
     "test:backend": "python3 -m unittest discover -s tests/backend -p 'test_*.py'",
     "check": "npm run build && npm test",
-    "build": "npm run typecheck && node scripts/build.mjs",
+    "build": "npm run typecheck && node tools/build.mjs",
     "start": "python3 server/server.py"
   },
   "dependencies": {

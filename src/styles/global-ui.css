@@ -45,7 +45,7 @@ body {
     pointer-events: none;
     background: var(--text);
     opacity: 0.03;
-    mask: url("/assets/bamboo.svg") repeat;
+    mask: url("/static/bamboo.svg") repeat;
     mask-size: 16px 32px;
 }
 h1,

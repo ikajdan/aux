@@ -13,7 +13,7 @@
 </p>
 
 <h1 align="center">
-  <img src="assets/logo.svg" alt="Aux" width="128" />
+  <img src="static/logo.svg" alt="Aux" width="128" />
   <br />
   Aux
   <br />

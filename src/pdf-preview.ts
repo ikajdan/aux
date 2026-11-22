@@ -48,7 +48,7 @@ export interface Preview {
 
 import { getDocument, GlobalWorkerOptions, TextLayer } from "pdfjs-dist/build/pdf.mjs";
 
-GlobalWorkerOptions.workerSrc = "/assets/pdfjs/pdf.worker.min.mjs";
+GlobalWorkerOptions.workerSrc = "/static/pdfjs/pdf.worker.min.mjs";
 
 export function createPreview(
   container: HTMLElement,
@@ -684,10 +684,10 @@ export function createPreview(
         if (stale()) return;
         loadingTask = getDocument({
           data,
-          cMapUrl: "/assets/pdfjs/cmaps/",
+          cMapUrl: "/static/pdfjs/cmaps/",
           cMapPacked: true,
-          standardFontDataUrl: "/assets/pdfjs/standard_fonts/",
-          wasmUrl: "/assets/pdfjs/wasm/",
+          standardFontDataUrl: "/static/pdfjs/standard_fonts/",
+          wasmUrl: "/static/pdfjs/wasm/",
           isEvalSupported: false,
         });
         const pdf = await loadingTask.promise;
