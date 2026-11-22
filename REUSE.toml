@@ -15,7 +15,7 @@ SPDX-FileCopyrightText = "Ignacy Kajdan <ignacy.kajdan@gmail.com>"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
-path = "static/bamboo.svg"
+path = "static/header-pattern.svg"
 SPDX-FileCopyrightText = "Steve Schoger"
 SPDX-License-Identifier = "CC-BY-4.0"
 
